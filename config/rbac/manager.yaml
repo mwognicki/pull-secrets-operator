@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pull-secrets-operator-manager
+  namespace: pull-secrets-operator-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pull-secrets-operator-manager
+rules:
+  - apiGroups:
+      - pullsecrets.ognicki.ooo
+    resources:
+      - registrypullsecrets
+      - registrypullsecrets/status
+      - pullsecretpolicies
+      - pullsecretpolicies/status
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pull-secrets-operator-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pull-secrets-operator-manager
+subjects:
+  - kind: ServiceAccount
+    name: pull-secrets-operator-manager
+    namespace: pull-secrets-operator-system

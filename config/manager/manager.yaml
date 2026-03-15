@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pull-secrets-operator-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pull-secrets-operator-manager
+  namespace: pull-secrets-operator-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pull-secrets-operator
+      app.kubernetes.io/component: manager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pull-secrets-operator
+        app.kubernetes.io/component: manager
+    spec:
+      serviceAccountName: pull-secrets-operator-manager
+      containers:
+        - name: manager
+          image: ghcr.io/mwognicki/pull-secrets-operator:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --leader-elect
+            - --metrics-bind-address=:8080
+            - --health-probe-bind-address=:8081
+          ports:
+            - containerPort: 8080
+              name: metrics
+            - containerPort: 8081
+              name: probes
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probes
