@@ -1,0 +1,11 @@
+.git
+.DS_Store
+*.md
+coverage.*
+*.coverprofile
+*.out
+*.test
+bin/
+dist/
+.idea/
+**/*.md
