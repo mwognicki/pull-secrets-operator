@@ -13,3 +13,5 @@ Behavior notes:
 - `RegistryPullSecret` reconciliation is implemented as the first controller pass and delegates selection/rendering decisions to `internal/sync`.
 - `RegistryPullSecret` reconciliation now creates, updates, and deletes Secrets that are managed by the same source resource but no longer desired.
 - `PullSecretPolicy` is still not treated as a standalone retroactive cleanup trigger by itself.
+- `RegistryPullSecret.status` is updated on successful and failed reconciliations.
+- `PullSecretPolicy.status` is updated by a dedicated reconciler and reflects whether a given object is the active singleton policy.

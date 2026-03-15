@@ -62,6 +62,11 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		os.Exit(1)
 	}
+	if err := (&controller.PullSecretPolicyReconciler{
+		Client: mgr.GetClient(),
+	}).SetupWithManager(mgr); err != nil {
+		os.Exit(1)
+	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		os.Exit(1)
