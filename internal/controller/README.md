@@ -11,4 +11,5 @@ Behavior notes:
 - `RegistryPullSecret` updates should trigger prompt reconciliation so explicit spec changes are synced as soon as possible.
 - `PullSecretPolicy` updates should affect future decisions, but should not trigger retroactive cleanup or backfill by themselves.
 - `RegistryPullSecret` reconciliation is implemented as the first controller pass and delegates selection/rendering decisions to `internal/sync`.
-- Current scope is create/update of desired Secrets only; cleanup of no-longer-desired Secrets is still intentionally deferred.
+- `RegistryPullSecret` reconciliation now creates, updates, and deletes Secrets that are managed by the same source resource but no longer desired.
+- `PullSecretPolicy` is still not treated as a standalone retroactive cleanup trigger by itself.

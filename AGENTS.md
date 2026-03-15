@@ -23,3 +23,9 @@
 
 ## Container Images
 - For any Docker-based images, use `almalinux/10-kitten-micro` as the desired base image.
+
+## Versioning Policy
+- The Kubernetes API should evolve explicitly through versioned packages such as `v1alpha1`, with compatibility decisions reflected in CRD and Go type changes.
+- The operator binary and container image should use SemVer-style version identifiers.
+- Development builds may use pre-release or branch-oriented tags, but stable release tags should be immutable.
+- Build artifacts should embed version, git commit, and build date metadata when possible.

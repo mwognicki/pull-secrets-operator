@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
@@ -15,20 +16,28 @@ import (
 
 	pullsecretsv1alpha1 "github.com/mwognicki/pull-secrets-operator/api/pullsecrets/v1alpha1"
 	"github.com/mwognicki/pull-secrets-operator/internal/controller"
+	"github.com/mwognicki/pull-secrets-operator/pkg/version"
 )
 
 func main() {
 	var metricsAddr string
 	var probeAddr string
 	var leaderElection bool
+	var printVersion bool
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&leaderElection, "leader-elect", false, "Enable leader election for controller manager.")
+	flag.BoolVar(&printVersion, "version", false, "Print the operator version and exit.")
 
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	if printVersion {
+		fmt.Println(version.String())
+		return
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 

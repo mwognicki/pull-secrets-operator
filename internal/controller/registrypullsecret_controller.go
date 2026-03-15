@@ -50,6 +50,7 @@ func (r *RegistryPullSecretReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("build desired Secrets for %s: %w", req.NamespacedName, err)
 	}
+	obsoleteSecrets := sync.ObsoleteSecrets(registryPullSecret, existingSecrets, desiredSecrets)
 
 	for _, desiredSecret := range desiredSecrets {
 		if !desiredSecret.NeedsApply {
@@ -61,6 +62,14 @@ func (r *RegistryPullSecretReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 
 		logger.Info("applied replicated pull secret", "namespace", desiredSecret.Secret.Namespace, "name", desiredSecret.Secret.Name)
+	}
+
+	for _, obsoleteSecret := range obsoleteSecrets {
+		if err := r.deleteSecret(ctx, obsoleteSecret); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		logger.Info("deleted obsolete replicated pull secret", "namespace", obsoleteSecret.Namespace, "name", obsoleteSecret.Name)
 	}
 
 	return ctrl.Result{}, nil
@@ -132,6 +141,14 @@ func (r *RegistryPullSecretReconciler) applySecret(ctx context.Context, desired 
 	existing.Data = desired.Data
 	if updateErr := r.Update(ctx, &existing); updateErr != nil {
 		return fmt.Errorf("update Secret %s/%s: %w", desired.Namespace, desired.Name, updateErr)
+	}
+
+	return nil
+}
+
+func (r *RegistryPullSecretReconciler) deleteSecret(ctx context.Context, secret *corev1.Secret) error {
+	if err := r.Delete(ctx, secret); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("delete Secret %s/%s: %w", secret.Namespace, secret.Name, err)
 	}
 
 	return nil

@@ -169,6 +169,66 @@ func TestDesiredSecrets(t *testing.T) {
 	}
 }
 
+func TestObsoleteSecrets(t *testing.T) {
+	t.Parallel()
+
+	registryPullSecret := pullsecretsv1alpha1.RegistryPullSecret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
+	}
+
+	desiredSecrets := []DesiredSecret{
+		{
+			Secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ghcr-pull-secret",
+					Namespace: "team-a",
+				},
+			},
+		},
+	}
+
+	existingSecrets := map[string]*corev1.Secret{
+		"team-a/ghcr-pull-secret": {
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ghcr-pull-secret",
+				Namespace: "team-a",
+				Labels: map[string]string{
+					metadata.ManagedByLabelKey:              metadata.ManagedByLabelValue,
+					metadata.RegistryPullSecretNameLabelKey: "ghcr",
+				},
+			},
+		},
+		"team-b/old-ghcr-secret": {
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "old-ghcr-secret",
+				Namespace: "team-b",
+				Labels: map[string]string{
+					metadata.ManagedByLabelKey:              metadata.ManagedByLabelValue,
+					metadata.RegistryPullSecretNameLabelKey: "ghcr",
+				},
+			},
+		},
+		"team-c/foreign-secret": {
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foreign-secret",
+				Namespace: "team-c",
+				Labels: map[string]string{
+					metadata.ManagedByLabelKey:              metadata.ManagedByLabelValue,
+					metadata.RegistryPullSecretNameLabelKey: "dockerhub",
+				},
+			},
+		},
+	}
+
+	got := ObsoleteSecrets(registryPullSecret, existingSecrets, desiredSecrets)
+	if len(got) != 1 {
+		t.Fatalf("len(ObsoleteSecrets()) = %d, want 1", len(got))
+	}
+	if got[0].Namespace != "team-b" || got[0].Name != "old-ghcr-secret" {
+		t.Fatalf("obsolete Secret = %s/%s, want team-b/old-ghcr-secret", got[0].Namespace, got[0].Name)
+	}
+}
+
 func mustDockerConfigJSON(t *testing.T, credentials pullsecretsv1alpha1.RegistryCredentials) []byte {
 	t.Helper()
 
