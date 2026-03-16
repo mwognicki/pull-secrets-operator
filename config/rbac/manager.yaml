@@ -13,13 +13,20 @@ rules:
       - pullsecrets.ognicki.ooo
     resources:
       - registrypullsecrets
-      - registrypullsecrets/status
       - pullsecretpolicies
-      - pullsecretpolicies/status
     verbs:
       - get
       - list
       - watch
+  - apiGroups:
+      - pullsecrets.ognicki.ooo
+    resources:
+      - registrypullsecrets/status
+      - pullsecretpolicies/status
+    verbs:
+      - get
+      - patch
+      - update
   - apiGroups:
       - ""
     resources:

@@ -52,9 +52,15 @@ type RegistryPullSecretSpec struct {
 	Namespaces  NamespaceSelection  `json:"namespaces"`
 }
 
-// RegistryPullSecretStatus is reserved for future observed state.
-// TODO: populate this in the next iteration of the API/controller work.
-type RegistryPullSecretStatus struct{}
+// RegistryPullSecretStatus describes the last observed reconciliation state.
+type RegistryPullSecretStatus struct {
+	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
+	DesiredSecretCount int32              `json:"desiredSecretCount,omitempty"`
+	AppliedSecretCount int32              `json:"appliedSecretCount,omitempty"`
+	DeletedSecretCount int32              `json:"deletedSecretCount,omitempty"`
+	LastSyncTime       *metav1.Time       `json:"lastSyncTime,omitempty"`
+	Conditions         []metav1.Condition `json:"conditions,omitempty"`
+}
 
 // RegistryPullSecret defines credentials and namespace targeting for one registry.
 // Changes to this resource should trigger prompt reconciliation so updated
@@ -138,6 +144,15 @@ func (in *RegistryPullSecretSpec) DeepCopy() *RegistryPullSecretSpec {
 
 func (in *RegistryPullSecretStatus) DeepCopyInto(out *RegistryPullSecretStatus) {
 	*out = *in
+	if in.LastSyncTime != nil {
+		out.LastSyncTime = in.LastSyncTime.DeepCopy()
+	}
+	if in.Conditions != nil {
+		out.Conditions = make([]metav1.Condition, len(in.Conditions))
+		for i := range in.Conditions {
+			in.Conditions[i].DeepCopyInto(&out.Conditions[i])
+		}
+	}
 }
 
 func (in *RegistryPullSecretStatus) DeepCopy() *RegistryPullSecretStatus {

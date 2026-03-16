@@ -2,10 +2,14 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -20,6 +24,12 @@ type RegistryPullSecretReconciler struct {
 	client.Client
 }
 
+type registryPullSecretReconcileStatus struct {
+	desiredSecretCount int32
+	appliedSecretCount int32
+	deletedSecretCount int32
+}
+
 func (r *RegistryPullSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -31,24 +41,40 @@ func (r *RegistryPullSecretReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("get RegistryPullSecret %s: %w", req.NamespacedName, err)
 	}
 
+	status, reconcileErr := r.reconcileRegistryPullSecret(ctx, logger, &registryPullSecret)
+	statusErr := r.updateRegistryPullSecretStatus(ctx, &registryPullSecret, status, reconcileErr)
+
+	return ctrl.Result{}, errors.Join(reconcileErr, statusErr)
+}
+
+func (r *RegistryPullSecretReconciler) reconcileRegistryPullSecret(
+	ctx context.Context,
+	logger logr.Logger,
+	registryPullSecret *pullsecretsv1alpha1.RegistryPullSecret,
+) (registryPullSecretReconcileStatus, error) {
 	policy, err := r.getPullSecretPolicy(ctx)
 	if err != nil {
-		return ctrl.Result{}, err
+		return registryPullSecretReconcileStatus{}, err
 	}
 
 	allNamespaces, err := r.listNamespaces(ctx)
 	if err != nil {
-		return ctrl.Result{}, err
+		return registryPullSecretReconcileStatus{}, err
 	}
 
 	existingSecrets, err := r.listExistingSecrets(ctx)
 	if err != nil {
-		return ctrl.Result{}, err
+		return registryPullSecretReconcileStatus{}, err
 	}
 
-	desiredSecrets, err := sync.DesiredSecrets(registryPullSecret, policy, allNamespaces, existingSecrets)
+	desiredSecrets, err := sync.DesiredSecrets(*registryPullSecret, policy, allNamespaces, existingSecrets)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("build desired Secrets for %s: %w", req.NamespacedName, err)
+		return registryPullSecretReconcileStatus{}, fmt.Errorf("build desired Secrets for %s: %w", client.ObjectKeyFromObject(registryPullSecret), err)
+	}
+	obsoleteSecrets := sync.ObsoleteSecrets(*registryPullSecret, existingSecrets, desiredSecrets)
+
+	status := registryPullSecretReconcileStatus{
+		desiredSecretCount: int32(len(desiredSecrets)),
 	}
 
 	for _, desiredSecret := range desiredSecrets {
@@ -57,13 +83,23 @@ func (r *RegistryPullSecretReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 
 		if err := r.applySecret(ctx, desiredSecret.Secret); err != nil {
-			return ctrl.Result{}, err
+			return status, err
 		}
+		status.appliedSecretCount++
 
 		logger.Info("applied replicated pull secret", "namespace", desiredSecret.Secret.Namespace, "name", desiredSecret.Secret.Name)
 	}
 
-	return ctrl.Result{}, nil
+	for _, obsoleteSecret := range obsoleteSecrets {
+		if err := r.deleteSecret(ctx, obsoleteSecret); err != nil {
+			return status, err
+		}
+		status.deletedSecretCount++
+
+		logger.Info("deleted obsolete replicated pull secret", "namespace", obsoleteSecret.Namespace, "name", obsoleteSecret.Name)
+	}
+
+	return status, nil
 }
 
 func (r *RegistryPullSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -132,6 +168,50 @@ func (r *RegistryPullSecretReconciler) applySecret(ctx context.Context, desired 
 	existing.Data = desired.Data
 	if updateErr := r.Update(ctx, &existing); updateErr != nil {
 		return fmt.Errorf("update Secret %s/%s: %w", desired.Namespace, desired.Name, updateErr)
+	}
+
+	return nil
+}
+
+func (r *RegistryPullSecretReconciler) deleteSecret(ctx context.Context, secret *corev1.Secret) error {
+	if err := r.Delete(ctx, secret); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("delete Secret %s/%s: %w", secret.Namespace, secret.Name, err)
+	}
+
+	return nil
+}
+
+func (r *RegistryPullSecretReconciler) updateRegistryPullSecretStatus(
+	ctx context.Context,
+	registryPullSecret *pullsecretsv1alpha1.RegistryPullSecret,
+	status registryPullSecretReconcileStatus,
+	reconcileErr error,
+) error {
+	now := metav1.Now()
+	registryPullSecret.Status.ObservedGeneration = registryPullSecret.Generation
+	registryPullSecret.Status.DesiredSecretCount = status.desiredSecretCount
+	registryPullSecret.Status.AppliedSecretCount = status.appliedSecretCount
+	registryPullSecret.Status.DeletedSecretCount = status.deletedSecretCount
+	registryPullSecret.Status.LastSyncTime = &now
+
+	condition := metav1.Condition{
+		Type:               "Ready",
+		ObservedGeneration: registryPullSecret.Generation,
+		LastTransitionTime: now,
+	}
+	if reconcileErr != nil {
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = "SyncFailed"
+		condition.Message = reconcileErr.Error()
+	} else {
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = "Synced"
+		condition.Message = "RegistryPullSecret reconciled successfully"
+	}
+	apimeta.SetStatusCondition(&registryPullSecret.Status.Conditions, condition)
+
+	if err := r.Status().Update(ctx, registryPullSecret); err != nil {
+		return fmt.Errorf("update RegistryPullSecret status %s: %w", client.ObjectKeyFromObject(registryPullSecret), err)
 	}
 
 	return nil

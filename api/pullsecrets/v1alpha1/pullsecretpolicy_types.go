@@ -18,9 +18,14 @@ type PullSecretPolicySpec struct {
 	ExcludedNamespaces []string `json:"excludedNamespaces,omitempty"`
 }
 
-// PullSecretPolicyStatus is reserved for future observed state.
-// TODO: populate this in the next iteration of the API/controller work.
-type PullSecretPolicyStatus struct{}
+// PullSecretPolicyStatus describes the last observed reconciliation state.
+type PullSecretPolicyStatus struct {
+	ObservedGeneration     int64              `json:"observedGeneration,omitempty"`
+	ExcludedNamespaceCount int32              `json:"excludedNamespaceCount,omitempty"`
+	ActiveSingleton        bool               `json:"activeSingleton,omitempty"`
+	LastSyncTime           *metav1.Time       `json:"lastSyncTime,omitempty"`
+	Conditions             []metav1.Condition `json:"conditions,omitempty"`
+}
 
 // PullSecretPolicy is the cluster-wide namespace policy resource.
 // The operator should treat the object named PullSecretPolicySingletonName as the
@@ -61,6 +66,15 @@ func (in *PullSecretPolicySpec) DeepCopy() *PullSecretPolicySpec {
 
 func (in *PullSecretPolicyStatus) DeepCopyInto(out *PullSecretPolicyStatus) {
 	*out = *in
+	if in.LastSyncTime != nil {
+		out.LastSyncTime = in.LastSyncTime.DeepCopy()
+	}
+	if in.Conditions != nil {
+		out.Conditions = make([]metav1.Condition, len(in.Conditions))
+		for i := range in.Conditions {
+			in.Conditions[i].DeepCopyInto(&out.Conditions[i])
+		}
+	}
 }
 
 func (in *PullSecretPolicyStatus) DeepCopy() *PullSecretPolicyStatus {

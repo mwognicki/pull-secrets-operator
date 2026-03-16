@@ -22,6 +22,36 @@ type DesiredSecret struct {
 	NeedsApply bool
 }
 
+// ObsoleteSecrets returns Secrets managed for the given RegistryPullSecret that are
+// no longer part of the desired target set and should be deleted on reconciliation.
+func ObsoleteSecrets(
+	registryPullSecret pullsecretsv1alpha1.RegistryPullSecret,
+	existingSecrets map[string]*corev1.Secret,
+	desiredSecrets []DesiredSecret,
+) []*corev1.Secret {
+	desiredKeys := make(map[string]struct{}, len(desiredSecrets))
+	for _, desiredSecret := range desiredSecrets {
+		desiredKeys[desiredSecret.Secret.Namespace+"/"+desiredSecret.Secret.Name] = struct{}{}
+	}
+
+	obsoleteSecrets := make([]*corev1.Secret, 0)
+	for key, existingSecret := range existingSecrets {
+		if existingSecret.Labels[metadata.ManagedByLabelKey] != metadata.ManagedByLabelValue {
+			continue
+		}
+		if existingSecret.Labels[metadata.RegistryPullSecretNameLabelKey] != registryPullSecret.Name {
+			continue
+		}
+		if _, ok := desiredKeys[key]; ok {
+			continue
+		}
+
+		obsoleteSecrets = append(obsoleteSecrets, existingSecret.DeepCopy())
+	}
+
+	return obsoleteSecrets
+}
+
 // DesiredSecrets builds the desired dockerconfigjson Secrets for the provided namespace inventory.
 func DesiredSecrets(
 	registryPullSecret pullsecretsv1alpha1.RegistryPullSecret,

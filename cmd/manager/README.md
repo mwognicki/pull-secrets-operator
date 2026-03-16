@@ -7,3 +7,4 @@ The manager binary wires together:
 - `RegistryPullSecret` controller setup
 - health and readiness endpoints
 - leader election and manager options
+- a `--version` flag for embedded build metadata
