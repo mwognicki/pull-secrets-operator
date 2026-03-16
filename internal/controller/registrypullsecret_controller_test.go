@@ -17,6 +17,22 @@ import (
 	"github.com/mwognicki/pull-secrets-operator/pkg/metadata"
 )
 
+func TestRegistryPullSecretReconcileIgnoresMissingResource(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+
+	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "missing"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil", err)
+	}
+}
+
 func TestRegistryPullSecretReconcileCreatesMissingSecrets(t *testing.T) {
 	t.Parallel()
 
@@ -430,6 +446,88 @@ func TestRegistryPullSecretsForSecret(t *testing.T) {
 
 	if len(requests) != 1 || requests[0].Name != "ghcr" {
 		t.Fatalf("requests = %#v, want single ghcr request", requests)
+	}
+}
+
+func TestRegistryPullSecretsForSecretIgnoresOtherObjects(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+
+	requests := reconciler.registryPullSecretsForSecret(context.Background(), &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "team-a"},
+	})
+	if requests != nil {
+		t.Fatalf("requests = %#v, want nil", requests)
+	}
+}
+
+func TestGetPullSecretPolicyReturnsEmptyWhenSingletonMissing(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+
+	policy, err := reconciler.getPullSecretPolicy(context.Background())
+	if err != nil {
+		t.Fatalf("getPullSecretPolicy() error = %v", err)
+	}
+	if policy.Name != "" {
+		t.Fatalf("policy name = %q, want empty", policy.Name)
+	}
+}
+
+func TestListExistingSecretsIndexesByNamespaceAndName(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "one", Namespace: "team-a"}},
+			&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "two", Namespace: "team-b"}},
+		).Build(),
+	}
+
+	secrets, err := reconciler.listExistingSecrets(context.Background())
+	if err != nil {
+		t.Fatalf("listExistingSecrets() error = %v", err)
+	}
+
+	if _, ok := secrets["team-a/one"]; !ok {
+		t.Fatalf("expected team-a/one key in %#v", secrets)
+	}
+	if _, ok := secrets["team-b/two"]; !ok {
+		t.Fatalf("expected team-b/two key in %#v", secrets)
+	}
+}
+
+func TestResolveRegistryCredentialsReturnsMissingSecretError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+
+	_, err := reconciler.resolveRegistryCredentials(context.Background(), &pullsecretsv1alpha1.RegistryPullSecret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
+		Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
+			CredentialsSecretRef: &pullsecretsv1alpha1.SecretReference{
+				Name:      "missing",
+				Namespace: "ops",
+			},
+			Namespaces: pullsecretsv1alpha1.NamespaceSelection{
+				Policy: pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive,
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("resolveRegistryCredentials() error = nil, want missing Secret error")
 	}
 }
 
