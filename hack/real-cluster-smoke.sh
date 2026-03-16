@@ -464,6 +464,8 @@ main() {
   log_info "Test resource prefix: ${TEST_PREFIX}"
 
   kubectl version --client >/dev/null
+  log_chore "Checking Kubernetes API connectivity with kubectl cluster-info"
+  kubectl cluster-info >/dev/null
   kubectl auth can-i get namespaces --all-namespaces >/dev/null
   log_chore "Performing pre-run reset to avoid interference from previous smoke runs"
   cleanup_operator_install
