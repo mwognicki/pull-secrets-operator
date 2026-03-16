@@ -15,7 +15,7 @@ When `spec.namespaces.targetSecretName` is not set, the operator derives a name 
 - `registry.gitlab.com` → `gitlab-pull-secret`
 - `my-registry.internal:5000` → `my-registry-pull-secret`
 
-See [How it works — default secret naming](/concepts/how-it-works/#default-secret-naming) for the full algorithm.
+See [How it works — default secret naming](../../concepts/how-it-works/#default-secret-naming) for the full algorithm.
 
 ## Global override
 
