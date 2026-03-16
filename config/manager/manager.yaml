@@ -23,7 +23,7 @@ spec:
       serviceAccountName: pull-secrets-operator-manager
       containers:
         - name: manager
-          image: ghcr.io/mwognicki/pull-secrets-operator:latest
+          image: ghcr.io/mwognicki/pull-secrets-operator:dev-alpha1
           imagePullPolicy: IfNotPresent
           args:
             - --leader-elect

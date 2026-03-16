@@ -1,10 +1,10 @@
 # CRD Configuration
 
-This directory contains hand-written CustomResourceDefinition manifests for the operator APIs.
+This directory contains hand-written installation manifests centered around the operator CRDs.
 
 Current manifests:
-- `crds.yaml` for applying both CRDs at once
+- `crds.yaml` as a one-shot install bundle for CRDs, RBAC, namespace, and manager deployment
 - `pullsecrets.ognicki.ooo_pullsecretpolicies.yaml`
 - `pullsecrets.ognicki.ooo_registrypullsecrets.yaml`
 
-Both resources are currently cluster-scoped.
+Both custom resources are currently cluster-scoped.
