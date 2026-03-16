@@ -20,6 +20,11 @@ INCLUDED_NAMESPACE="${TEST_PREFIX}-include"
 OVERRIDE_NAMESPACE="${TEST_PREFIX}-override"
 EXCLUDED_NAMESPACE="${TEST_PREFIX}-excluded"
 INVALID_NAMESPACE="${TEST_PREFIX}-invalid"
+EXCLUSIVE_ALLOWED_NAMESPACE="${TEST_PREFIX}-exclusive-allow"
+EXCLUSIVE_BLOCKED_NAMESPACE="${TEST_PREFIX}-exclusive-block"
+INLINE_NAMESPACE="${TEST_PREFIX}-inline"
+UPDATE_OLD_NAMESPACE="${TEST_PREFIX}-update-old"
+UPDATE_NEW_NAMESPACE="${TEST_PREFIX}-update-new"
 
 EXPECTED_DEFAULT_SECRET_NAME=""
 TEMP_DIR="$(mktemp -d)"
@@ -50,17 +55,45 @@ log_test_pass() {
   printf '%b\n' "${COLOR_BOLD}${COLOR_GREEN}Test/assertion passed:${COLOR_RESET} $*"
 }
 
+namespace_allowed_by_policy() {
+  local namespace="$1"
+
+  case "${namespace}" in
+    "${INCLUDED_NAMESPACE}" | \
+    "${OVERRIDE_NAMESPACE}" | \
+    "${EXCLUSIVE_ALLOWED_NAMESPACE}" | \
+    "${EXCLUSIVE_BLOCKED_NAMESPACE}" | \
+    "${INLINE_NAMESPACE}" | \
+    "${UPDATE_OLD_NAMESPACE}" | \
+    "${UPDATE_NEW_NAMESPACE}")
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
 cleanup_test_resources() {
   set +e
   log_chore "Cleaning up test-created custom resources, credentials Secret, and throwaway namespaces"
-  kubectl delete registrypullsecret --ignore-not-found "${TEST_PREFIX}-valid" "${TEST_PREFIX}-invalid" >/dev/null 2>&1
+  kubectl delete registrypullsecret --ignore-not-found \
+    "${TEST_PREFIX}-valid" \
+    "${TEST_PREFIX}-invalid" \
+    "${TEST_PREFIX}-exclusive" \
+    "${TEST_PREFIX}-inline" \
+    "${TEST_PREFIX}-update" >/dev/null 2>&1
   kubectl delete pullsecretpolicy --ignore-not-found cluster >/dev/null 2>&1
   kubectl -n "${OPERATOR_NAMESPACE}" delete secret --ignore-not-found "${TEST_PREFIX}-credentials" >/dev/null 2>&1
   kubectl delete namespace --ignore-not-found \
     "${INCLUDED_NAMESPACE}" \
     "${OVERRIDE_NAMESPACE}" \
     "${EXCLUDED_NAMESPACE}" \
-    "${INVALID_NAMESPACE}" >/dev/null 2>&1
+    "${INVALID_NAMESPACE}" \
+    "${EXCLUSIVE_ALLOWED_NAMESPACE}" \
+    "${EXCLUSIVE_BLOCKED_NAMESPACE}" \
+    "${INLINE_NAMESPACE}" \
+    "${UPDATE_OLD_NAMESPACE}" \
+    "${UPDATE_NEW_NAMESPACE}" >/dev/null 2>&1
 }
 
 cleanup_operator_install() {
@@ -181,23 +214,34 @@ install_operator() {
 }
 
 create_test_namespaces() {
-  log_chore "Creating unique test namespaces for included, overridden, excluded, and invalid scenarios"
+  log_chore "Creating unique test namespaces for included, excluded, inline, exclusive, update, and invalid scenarios"
   kubectl create namespace "${INCLUDED_NAMESPACE}"
   kubectl create namespace "${OVERRIDE_NAMESPACE}"
   kubectl create namespace "${EXCLUDED_NAMESPACE}"
   kubectl create namespace "${INVALID_NAMESPACE}"
+  kubectl create namespace "${EXCLUSIVE_ALLOWED_NAMESPACE}"
+  kubectl create namespace "${EXCLUSIVE_BLOCKED_NAMESPACE}"
+  kubectl create namespace "${INLINE_NAMESPACE}"
+  kubectl create namespace "${UPDATE_OLD_NAMESPACE}"
+  kubectl create namespace "${UPDATE_NEW_NAMESPACE}"
 }
 
 write_manifests() {
   log_chore "Rendering temporary manifests for the cluster policy, credentials Secret, and RegistryPullSecret scenarios"
+  local policy_exclusions=""
+  while IFS= read -r namespace; do
+    if ! namespace_allowed_by_policy "${namespace}"; then
+      policy_exclusions="${policy_exclusions}"$'\n'"    - ${namespace}"
+    fi
+  done < <(kubectl get namespaces -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+
   cat > "${TEMP_DIR}/policy.yaml" <<EOF
 apiVersion: pullsecrets.ognicki.ooo/v1alpha1
 kind: PullSecretPolicy
 metadata:
   name: cluster
 spec:
-  excludedNamespaces:
-    - ${EXCLUDED_NAMESPACE}
+  excludedNamespaces:${policy_exclusions}
 EOF
 
   cat > "${TEMP_DIR}/credentials-secret.yaml" <<EOF
@@ -248,6 +292,77 @@ spec:
       - ${INCLUDED_NAMESPACE}
       - ${EXCLUDED_NAMESPACE}
 EOF
+
+  cat > "${TEMP_DIR}/exclusive-rps.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-exclusive
+spec:
+  credentialsSecretRef:
+    name: ${TEST_PREFIX}-credentials
+    namespace: ${OPERATOR_NAMESPACE}
+  namespaces:
+    policy: Exclusive
+    namespaces:
+      - ${EXCLUSIVE_BLOCKED_NAMESPACE}
+      - ${INCLUDED_NAMESPACE}
+      - ${OVERRIDE_NAMESPACE}
+      - ${INLINE_NAMESPACE}
+      - ${UPDATE_OLD_NAMESPACE}
+      - ${UPDATE_NEW_NAMESPACE}
+      - ${INVALID_NAMESPACE}
+EOF
+
+  cat > "${TEMP_DIR}/inline-rps.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-inline
+spec:
+  credentials:
+    server: ${REGISTRY_SERVER}
+    username: ${REGISTRY_USERNAME}
+    password: ${REGISTRY_PASSWORD}
+    email: ${REGISTRY_EMAIL}
+  namespaces:
+    policy: Inclusive
+    namespaces:
+      - ${INLINE_NAMESPACE}
+EOF
+
+  cat > "${TEMP_DIR}/update-rps-initial.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-update
+spec:
+  credentialsSecretRef:
+    name: ${TEST_PREFIX}-credentials
+    namespace: ${OPERATOR_NAMESPACE}
+  namespaces:
+    policy: Inclusive
+    namespaces:
+      - ${UPDATE_OLD_NAMESPACE}
+EOF
+
+  cat > "${TEMP_DIR}/update-rps-updated.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-update
+spec:
+  credentialsSecretRef:
+    name: ${TEST_PREFIX}-credentials
+    namespace: ${OPERATOR_NAMESPACE}
+  namespaces:
+    policy: Inclusive
+    namespaces:
+      - ${UPDATE_NEW_NAMESPACE}
+    namespaceOverrides:
+      - namespace: ${UPDATE_NEW_NAMESPACE}
+        secretName: ${TEST_PREFIX}-updated-secret
+EOF
 }
 
 run_valid_scenario() {
@@ -279,6 +394,61 @@ run_invalid_scenario() {
   log_test_pass "Validation-failure assertions completed successfully"
 }
 
+run_exclusive_scenario() {
+  log_test_start "Exclusive policy: namespaces named in the local exclusion list must stay untouched while other namespaces still receive the managed pull secret"
+  kubectl apply -f "${TEMP_DIR}/exclusive-rps.yaml"
+
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=True \
+    "registrypullsecret/${TEST_PREFIX}-exclusive" \
+    --timeout="${WAIT_TIMEOUT}"
+
+  assert_secret_exists "${EXCLUSIVE_ALLOWED_NAMESPACE}" "${EXPECTED_DEFAULT_SECRET_NAME}"
+  assert_secret_missing "${EXCLUSIVE_BLOCKED_NAMESPACE}" "${EXPECTED_DEFAULT_SECRET_NAME}"
+  assert_secret_missing "${EXCLUDED_NAMESPACE}" "${EXPECTED_DEFAULT_SECRET_NAME}"
+  log_test_pass "Exclusive policy assertions completed successfully"
+}
+
+run_inline_credentials_scenario() {
+  log_test_start "Inline credentials mode: a RegistryPullSecret with in-spec credentials must reconcile successfully and create the managed pull secret"
+  kubectl apply -f "${TEMP_DIR}/inline-rps.yaml"
+
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=True \
+    "registrypullsecret/${TEST_PREFIX}-inline" \
+    --timeout="${WAIT_TIMEOUT}"
+
+  assert_secret_exists "${INLINE_NAMESPACE}" "${EXPECTED_DEFAULT_SECRET_NAME}"
+  log_test_pass "Inline credentials assertions completed successfully"
+}
+
+run_update_and_cleanup_scenario() {
+  log_test_start "Update and cleanup: changing a RegistryPullSecret must create the new target secret and remove the obsolete managed secret"
+  kubectl apply -f "${TEMP_DIR}/update-rps-initial.yaml"
+
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=True \
+    "registrypullsecret/${TEST_PREFIX}-update" \
+    --timeout="${WAIT_TIMEOUT}"
+
+  assert_secret_exists "${UPDATE_OLD_NAMESPACE}" "${EXPECTED_DEFAULT_SECRET_NAME}"
+
+  kubectl apply -f "${TEMP_DIR}/update-rps-updated.yaml"
+
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=True \
+    "registrypullsecret/${TEST_PREFIX}-update" \
+    --timeout="${WAIT_TIMEOUT}"
+
+  assert_secret_exists "${UPDATE_NEW_NAMESPACE}" "${TEST_PREFIX}-updated-secret"
+  assert_secret_missing "${UPDATE_OLD_NAMESPACE}" "${EXPECTED_DEFAULT_SECRET_NAME}"
+  log_test_pass "Update and cleanup assertions completed successfully"
+}
+
+run_non_destructive_delete_scenario() {
+  log_test_start "Source deletion: deleting a RegistryPullSecret must leave the already managed target secret in place"
+  kubectl delete registrypullsecret "${TEST_PREFIX}-update"
+  sleep 5
+  assert_secret_exists "${UPDATE_NEW_NAMESPACE}" "${TEST_PREFIX}-updated-secret"
+  log_test_pass "Non-destructive source deletion assertions completed successfully"
+}
+
 main() {
   require_command kubectl
   require_command mktemp
@@ -303,6 +473,10 @@ main() {
   write_manifests
   run_valid_scenario
   run_invalid_scenario
+  run_exclusive_scenario
+  run_inline_credentials_scenario
+  run_update_and_cleanup_scenario
+  run_non_destructive_delete_scenario
 
   log_success "Real-cluster smoke test passed for ${TEST_PREFIX}"
 }

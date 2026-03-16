@@ -15,10 +15,16 @@ It covers:
 - per-namespace secret name override behavior
 - cluster-wide namespace exclusion taking precedence
 - validation failure when a `RegistryPullSecret` explicitly targets a cluster-excluded namespace
+- `Exclusive` namespace policy behavior
+- inline credentials mode
+- prompt reconciliation after updating an existing `RegistryPullSecret`
+- removal of obsolete managed secrets after changing target namespaces or secret names
+- non-destructive behavior when deleting a `RegistryPullSecret`
 
 It does not yet cover:
 - multiple registry providers in one run
 - mutation or deletion scenarios after initial sync
+- manual modification of already managed replica `Secret` objects
 - automatic pull-request execution from GitHub Actions
 - PR-scoped image build and test wiring inside CI
 
