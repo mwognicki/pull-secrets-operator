@@ -11,3 +11,10 @@ bin/
 dist/
 .idea/
 **/*.md
+
+sync-cover.out
+sonar-project.properties
+
+.env
+
+hack/

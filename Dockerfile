@@ -2,7 +2,7 @@ FROM golang:1.26.0 AS builder
 
 WORKDIR /workspace
 
-ARG VERSION=0.1.0-dev
+ARG VERSION=dev
 ARG GIT_COMMIT=unknown
 ARG BUILD_DATE=unknown
 

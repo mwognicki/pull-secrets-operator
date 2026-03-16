@@ -1,20 +1,58 @@
 # Controllers
 
-This directory is reserved for Kubernetes reconcilers.
+This directory contains the Kubernetes reconcilers for the operator.
 
-Controllers here should focus on:
-- reconciling per-registry pull secret resources
-- reconciling cluster-wide namespace policy resources
-- coordinating replication behavior based on both resource types
+## Active Reconcilers
 
-Behavior notes:
-- `RegistryPullSecret` updates should trigger prompt reconciliation so explicit spec changes are synced as soon as possible.
-- `PullSecretPolicy` updates should affect future decisions, but should not trigger retroactive cleanup or backfill by themselves.
-- `RegistryPullSecret` reconciliation is implemented as the first controller pass and delegates selection/rendering decisions to `internal/sync`.
-- `RegistryPullSecret` reconciliation now creates, updates, and deletes Secrets that are managed by the same source resource but no longer desired.
-- Deleting a `RegistryPullSecret` is intentionally non-destructive for now; existing managed replica Secrets are left in place and no finalizer-based cleanup is used.
-- Drift in managed replica Secrets is intentionally not watched directly; those Secrets are resynchronized only on a later `RegistryPullSecret` reconcile, including after operator restart.
-- The controller also performs defensive validation for invalid-but-admitted objects, including namespace duplication, invalid namespace names, wildcard namespace patterns, excluded explicit namespaces, invalid target Secret names, and collisions with foreign Secrets.
-- `PullSecretPolicy` is still not treated as a standalone retroactive cleanup trigger by itself.
-- `RegistryPullSecret.status` is updated on successful and failed reconciliations, with validation failures surfaced through concise condition reasons and messages.
-- `PullSecretPolicy.status` is updated by a dedicated reconciler and reflects whether a given object is the active singleton policy and valid from the operator perspective.
+- `RegistryPullSecretReconciler`
+  Reconciles per-registry pull-secret intent into replicated `Secret` objects across namespaces.
+- `PullSecretPolicyReconciler`
+  Reconciles cluster-wide policy status for the singleton-like `PullSecretPolicy`.
+
+## `RegistryPullSecretReconciler`
+
+Current behavior:
+- Watches `RegistryPullSecret` resources directly.
+- Also watches source credential `Secret` objects referenced through `credentialsSecretRef`.
+- Delegates namespace selection, derived secret naming, rendering, and validation to `internal/sync`.
+- Creates missing managed replica `Secret`s.
+- Updates existing managed replica `Secret`s when the desired content changes.
+- Deletes obsolete managed replica `Secret`s when a `RegistryPullSecret` changes target names or namespace selection.
+
+Current lifecycle rules:
+- Explicit `RegistryPullSecret` changes should reconcile promptly.
+- Deleting a `RegistryPullSecret` is intentionally non-destructive for now.
+- No finalizer-based cleanup is used on source resource deletion.
+- Drift in already replicated managed `Secret`s is intentionally not watched directly.
+- Manual modification or deletion of managed replica `Secret`s is only revisited on a later `RegistryPullSecret` reconciliation opportunity.
+
+Current validation behavior:
+- Namespace duplication is rejected.
+- Invalid Kubernetes namespace names are rejected.
+- Wildcard namespace patterns are rejected.
+- Explicitly selected namespaces may not conflict with cluster-wide exclusions.
+- Invalid or too-short target `Secret` names are rejected.
+- Collisions with existing foreign `Secret`s are rejected.
+- Validation failures are surfaced through `RegistryPullSecret.status.conditions`.
+
+Current status behavior:
+- `RegistryPullSecret.status` is updated after both successful and failed reconciliations.
+- Validation failures use concise condition reasons such as `ValidationFailed`.
+- Successful reconciliations report observed generation, desired/applied/deleted secret counts, last sync time, and `Ready=True`.
+
+## `PullSecretPolicyReconciler`
+
+Current behavior:
+- Watches `PullSecretPolicy` resources directly.
+- Reconciles status only.
+- Treats the object named `cluster` as the conventional active singleton.
+
+Current lifecycle rules:
+- `PullSecretPolicy` updates affect future reconciliation decisions.
+- `PullSecretPolicy` is not treated as a standalone retroactive cleanup or backfill trigger.
+
+Current status behavior:
+- Reports whether the object is the active singleton.
+- Reports whether the object is valid from the operator perspective.
+- Updates concise `Valid` and `Ready` conditions.
+- Stores observed generation, excluded namespace count, singleton activity, validity, and last sync time.
