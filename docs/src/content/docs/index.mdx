@@ -1,0 +1,49 @@
+---
+title: pull-secrets-operator
+description: Kubernetes operator that replicates Docker pull secrets across namespaces automatically.
+template: splash
+hero:
+  tagline: Stop copying pull secrets by hand. Define once, replicate everywhere.
+  actions:
+    - text: Get Started
+      link: /getting-started/installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/mwognicki/pull-secrets-operator
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What it does
+
+`pull-secrets-operator` watches your `RegistryPullSecret` resources and keeps Docker pull secrets up to date in every namespace you care about — automatically.
+
+<CardGrid stagger>
+  <Card title="One source of truth" icon="document">
+    Define registry credentials once in a `RegistryPullSecret`. The operator reconciles the rest.
+  </Card>
+  <Card title="Flexible namespace targeting" icon="setting">
+    Use `Inclusive` or `Exclusive` namespace policies. Override the secret name per namespace if you need to.
+  </Card>
+  <Card title="Cluster-wide exclusions" icon="shield">
+    A single `PullSecretPolicy` lets you globally exclude namespaces like `kube-system` across all registries.
+  </Card>
+  <Card title="Safe by default" icon="approve-check">
+    Deleting a `RegistryPullSecret` never automatically removes already-replicated secrets. Your workloads stay running.
+  </Card>
+</CardGrid>
+
+## API group
+
+```
+pullsecrets.ognicki.ooo/v1alpha1
+```
+
+Two cluster-scoped resources:
+
+| Resource | Purpose |
+|---|---|
+| `RegistryPullSecret` | One registry + its namespace targeting rules |
+| `PullSecretPolicy` | Cluster-wide namespace exclusion policy (singleton) |
