@@ -177,6 +177,109 @@ func TestDefaultTargetSecretName(t *testing.T) {
 	}
 }
 
+func TestDefaultTargetSecretNameErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		server string
+	}{
+		{name: "empty server", server: ""},
+		{name: "invalid url", server: "https://%%%"},
+		{name: "missing hostname", server: "https://:5000"},
+		{name: "ignored only host parts", server: "registry.io"},
+		{name: "single label sanitizes empty", server: "___:5000"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if _, err := DefaultTargetSecretName(tt.server); err == nil {
+				t.Fatalf("DefaultTargetSecretName(%q) error = nil, want error", tt.server)
+			}
+		})
+	}
+}
+
+func TestDeriveHostLabel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		parts []string
+		want  string
+	}{
+		{name: "preferred token wins", parts: []string{"mirror", "ghcr"}, want: "ghcr"},
+		{name: "single filtered token kept", parts: []string{"docker", "private-host"}, want: "private-host"},
+		{name: "all ignored tokens removed", parts: []string{"docker", "registry", "www"}, want: ""},
+		{name: "multiple tokens choose penultimate", parts: []string{"alpha", "beta", "gamma"}, want: "beta"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := deriveHostLabel(tt.parts); got != tt.want {
+				t.Fatalf("deriveHostLabel() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripKnownTLDSuffix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		parts []string
+		want  []string
+	}{
+		{name: "empty stays empty", parts: nil, want: []string{}},
+		{name: "single label becomes empty", parts: []string{"localhost"}, want: []string{}},
+		{name: "secondary token removed after tld", parts: []string{"example", "com", "br"}, want: []string{"example"}},
+		{name: "regular tld only removed", parts: []string{"example", "cloud"}, want: []string{"example"}},
+		{name: "sanitization happens before stripping", parts: []string{"Example", "COM", "BR"}, want: []string{"example"}},
+		{name: "empty sanitized parts are skipped", parts: []string{"***", "example", "com"}, want: []string{"example"}},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := stripKnownTLDSuffix(tt.parts)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("stripKnownTLDSuffix() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSanitizeDNSLabelPart(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"Local_Host":     "localhost",
+		"--mixed-123--":  "mixed-123",
+		"spaces are bad": "spacesarebad",
+	}
+
+	for input, want := range tests {
+		input := input
+		want := want
+		t.Run(input, func(t *testing.T) {
+			t.Parallel()
+
+			if got := sanitizeDNSLabelPart(input); got != want {
+				t.Fatalf("sanitizeDNSLabelPart() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestEffectiveTargets(t *testing.T) {
 	t.Parallel()
 
@@ -246,5 +349,28 @@ func TestEffectiveTargetsUsesExplicitDefaultSecretName(t *testing.T) {
 
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("EffectiveTargets() = %#v, want %#v", got, want)
+	}
+}
+
+func TestEffectiveTargetsReturnsDefaultNameErrorBeforeExplicitOverride(t *testing.T) {
+	t.Parallel()
+
+	_, err := EffectiveTargets(
+		pullsecretsv1alpha1.RegistryPullSecret{
+			Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
+				Credentials: &pullsecretsv1alpha1.RegistryCredentials{Server: "___"},
+				Namespaces: pullsecretsv1alpha1.NamespaceSelection{
+					Policy:           pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive,
+					Namespaces:       []string{"team-a"},
+					TargetSecretName: "shared-secret",
+				},
+			},
+		},
+		pullsecretsv1alpha1.RegistryCredentials{Server: "___"},
+		pullsecretsv1alpha1.PullSecretPolicy{},
+		[]string{"team-a"},
+	)
+	if err == nil {
+		t.Fatal("EffectiveTargets() error = nil, want derivation error")
 	}
 }

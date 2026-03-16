@@ -22,6 +22,9 @@ type DesiredSecret struct {
 	NeedsApply bool
 }
 
+var dockerConfigJSONMarshal = json.Marshal
+var desiredSecretTargets = EffectiveTargets
+
 // ObsoleteSecrets returns Secrets managed for the given RegistryPullSecret that are
 // no longer part of the desired target set and should be deleted on reconciliation.
 func ObsoleteSecrets(
@@ -64,7 +67,7 @@ func DesiredSecrets(
 		return nil, err
 	}
 
-	targets, err := EffectiveTargets(registryPullSecret, credentials, policy, allNamespaces)
+	targets, err := desiredSecretTargets(registryPullSecret, credentials, policy, allNamespaces)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +170,7 @@ func DockerConfigJSON(credentials pullsecretsv1alpha1.RegistryCredentials) ([]by
 		},
 	}
 
-	rendered, err := json.Marshal(payload)
+	rendered, err := dockerConfigJSONMarshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal docker config json: %w", err)
 	}
