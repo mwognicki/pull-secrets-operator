@@ -16,6 +16,7 @@ on:
     paths:
       - go.mod
       - go.sum
+      - sonar-project.properties
       - api/**
       - cmd/**
       - internal/**
@@ -81,14 +82,13 @@ jobs:
           if-no-files-found: ignore
 
   sonarqube:
-    name: SonarQube Check
+    name: SonarQube
     runs-on: ubuntu-latest
     needs:
       - go-test
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -98,16 +98,10 @@ jobs:
           name: go-coverage
           path: .
 
-      - name: Run SonarQube scan
-        uses: sonarsource/sonarqube-scan-action@v6
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.organization="${{ secrets.SONAR_ORGANIZATION }}"
-            -Dsonar.projectKey="${{ secrets.SONAR_PROJECT_KEY }}"
-            -Dsonar.projectName="${{ secrets.SONAR_PROJECT_NAME }}"
-            -Dsonar.go.coverage.reportPaths="coverage.out"
 
   docker-build:
     name: Dry-Run Docker Build
