@@ -22,6 +22,9 @@ type DesiredSecret struct {
 	NeedsApply bool
 }
 
+var dockerConfigJSONMarshal = json.Marshal
+var desiredSecretTargets = EffectiveTargets
+
 // ObsoleteSecrets returns Secrets managed for the given RegistryPullSecret that are
 // no longer part of the desired target set and should be deleted on reconciliation.
 func ObsoleteSecrets(
@@ -55,23 +58,28 @@ func ObsoleteSecrets(
 // DesiredSecrets builds the desired dockerconfigjson Secrets for the provided namespace inventory.
 func DesiredSecrets(
 	registryPullSecret pullsecretsv1alpha1.RegistryPullSecret,
+	credentials pullsecretsv1alpha1.RegistryCredentials,
 	policy pullsecretsv1alpha1.PullSecretPolicy,
 	allNamespaces []string,
 	existingSecrets map[string]*corev1.Secret,
 ) ([]DesiredSecret, error) {
-	targets, err := EffectiveTargets(registryPullSecret, policy, allNamespaces)
+	if err := ValidateRegistryPullSecret(registryPullSecret, credentials, policy, existingSecrets); err != nil {
+		return nil, err
+	}
+
+	targets, err := desiredSecretTargets(registryPullSecret, credentials, policy, allNamespaces)
 	if err != nil {
 		return nil, err
 	}
 
-	dockerConfigJSON, err := DockerConfigJSON(registryPullSecret.Spec.Credentials)
+	dockerConfigJSON, err := DockerConfigJSON(credentials)
 	if err != nil {
 		return nil, err
 	}
 
 	desiredSecrets := make([]DesiredSecret, 0, len(targets))
 	for _, target := range targets {
-		secret := BuildPullSecret(registryPullSecret, target, dockerConfigJSON)
+		secret := BuildPullSecret(registryPullSecret, credentials, target, dockerConfigJSON)
 		key := target.Namespace + "/" + target.SecretName
 		desiredSecrets = append(desiredSecrets, DesiredSecret{
 			Secret:     secret,
@@ -85,6 +93,7 @@ func DesiredSecrets(
 // BuildPullSecret creates the desired Kubernetes Secret object for one namespace target.
 func BuildPullSecret(
 	registryPullSecret pullsecretsv1alpha1.RegistryPullSecret,
+	credentials pullsecretsv1alpha1.RegistryCredentials,
 	target NamespacePlan,
 	dockerConfigJSON []byte,
 ) *corev1.Secret {
@@ -95,7 +104,7 @@ func BuildPullSecret(
 			Labels: map[string]string{
 				metadata.ManagedByLabelKey:              metadata.ManagedByLabelValue,
 				metadata.RegistryPullSecretNameLabelKey: registryPullSecret.Name,
-				metadata.RegistryServerLabelKey:         registryPullSecret.Spec.Credentials.Server,
+				metadata.RegistryServerLabelKey:         credentials.Server,
 			},
 		},
 		Type: corev1.SecretTypeDockerConfigJson,
@@ -161,7 +170,7 @@ func DockerConfigJSON(credentials pullsecretsv1alpha1.RegistryCredentials) ([]by
 		},
 	}
 
-	rendered, err := json.Marshal(payload)
+	rendered, err := dockerConfigJSONMarshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal docker config json: %w", err)
 	}

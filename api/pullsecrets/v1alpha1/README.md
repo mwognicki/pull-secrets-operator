@@ -11,7 +11,13 @@ Current API notes:
 - Cluster-wide exclusions always take precedence over per-registry targeting rules.
 - Changing cluster-wide exclusions does not retroactively delete or backfill replicated secrets.
 - `RegistryPullSecret` changes should be reconciled promptly so explicit spec updates are reflected quickly.
+- Deleting a `RegistryPullSecret` is intentionally non-destructive for now and does not remove already replicated Secrets.
+- `RegistryPullSecret` supports either inline credentials or a `credentialsSecretRef`, but not both at the same time.
 - `RegistryPullSecret.spec.namespaces.targetSecretName` is optional and should be derived from the registry server when omitted.
 - Namespace overrides are modeled as a list.
-- `RegistryPullSecret.status` reports observed generation, secret counts, last sync time, and a `Ready` condition.
-- `PullSecretPolicy.status` reports observed generation, excluded namespace count, singleton activity, last sync time, and a `Ready` condition.
+- Namespace entries and namespace overrides must use valid Kubernetes namespace names and may not be duplicated within their respective lists.
+- Wildcard namespace patterns are intentionally unsupported for now.
+- Resulting pull secret names must be valid Kubernetes Secret names and contain at least 3 alphanumeric characters.
+- An explicitly selected namespace may not also be excluded by `PullSecretPolicy`.
+- `RegistryPullSecret.status` reports observed generation, secret counts, last sync time, and concise conditions, including validation failures.
+- `PullSecretPolicy.status` reports observed generation, excluded namespace count, singleton activity, operator-validity, last sync time, and concise `Ready`/`Valid` conditions.

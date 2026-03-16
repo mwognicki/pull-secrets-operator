@@ -1,5 +1,9 @@
 # pull-secrets-operator
 
+[![codecov](https://codecov.io/github/mwognicki/pull-secrets-operator/graph/badge.svg?token=57TCBX4OK3)](https://codecov.io/github/mwognicki/pull-secrets-operator)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mwognicki/pull-secrets-operator)](https://goreportcard.com/report/github.com/mwognicki/pull-secrets-operator)
+![GitHub License](https://img.shields.io/github/license/mwognicki/pull-secrets-operator)
+
 Kubernetes operator for replicating Docker pull secrets across namespaces.
 
 ## Repository Layout
@@ -38,11 +42,17 @@ See the README files inside those directories for the intended responsibilities.
 - Version: `v1alpha1`
 - Cluster-wide resource: `PullSecretPolicy`, conventionally named `cluster`
 - Per-registry resource: `RegistryPullSecret`
+- Per-registry credentials can come either from inline spec fields or from a referenced Kubernetes `Secret`
 - Per-registry default target secret name is optional and should be derived from the registry server when omitted
 - Explicit `RegistryPullSecret` changes should be reconciled promptly
 - Cluster-wide exclusions override per-registry rules and do not retroactively delete or backfill secrets
+- Deleting a `RegistryPullSecret` is intentionally non-destructive for now and leaves already replicated Secrets in place
+- Explicit namespace entries and namespace overrides must use valid Kubernetes namespace names, may not be duplicated within their lists, and wildcard namespace patterns are not supported
+- Resulting pull secret names must be Kubernetes-compatible and contain at least 3 alphanumeric characters
+- Explicitly selected namespaces may not conflict with cluster-wide exclusions, and target names may not collide with existing foreign Secrets
 - `RegistryPullSecret.status` reports reconciliation results and secret counts
-- `PullSecretPolicy.status` reports singleton activity and excluded namespace counts
+- invalid reconciliation or policy situations are reflected through concise status conditions and messages
+- `PullSecretPolicy.status` reports singleton activity, operator-validity, and excluded namespace counts
 
 ## Current Manifests
 

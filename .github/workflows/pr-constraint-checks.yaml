@@ -1,0 +1,207 @@
+name: PR Constraint Checks
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths:
+      - Dockerfile
+      - go.mod
+      - go.sum
+      - sonar-project.properties
+      - api/**
+      - cmd/**
+      - internal/**
+      - pkg/**
+      - .github/workflows/pr-constraint-checks.yaml
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  go-test:
+    name: Constraint Check
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    outputs:
+      coverage_line: ${{ steps.run-tests.outputs.coverage_line }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests with coverage
+        id: run-tests
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -coverprofile=coverage.txt ./...
+          status=$?
+          if [[ -f coverage.txt ]]; then
+            coverage_line="$(go tool cover -func=coverage.txt | tail -n 1)"
+          else
+            coverage_line="coverage unavailable"
+          fi
+          {
+            echo "coverage_line<<EOF"
+            echo "$coverage_line"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          exit $status
+
+      - name: Upload coverage reports to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.txt
+
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          {
+            echo '## Go Coverage Summary'
+            echo
+            echo '${{ steps.run-tests.outputs.coverage_line }}'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.txt
+          if-no-files-found: ignore
+
+  sonarqube:
+    name: SonarQube
+    runs-on: ubuntu-latest
+    needs:
+      - go-test
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: go-coverage
+          path: .
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  docker-build:
+    name: Dry-Run Docker Build and Trivy
+    runs-on: ubuntu-latest
+    needs:
+      - go-test
+      - sonarqube
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build manager image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: ghcr.io/mwognicki/pull-secrets-operator:constraint-check
+          build-args: |
+            VERSION=constraint-check
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Aqua Security Trivy
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: ghcr.io/mwognicki/pull-secrets-operator:constraint-check
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+  pr-comment:
+    name: PR Comment Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - go-test
+      - sonarqube
+      - docker-build
+
+    steps:
+      - name: Publish PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- pull-secrets-operator-constraint-summary -->';
+            const coverageLine = `${{ toJSON(needs.go-test.outputs.coverage_line) }}`.replace(/^"|"$/g, '');
+            const goResult = '${{ needs.go-test.result }}';
+            const sonarResult = '${{ needs.sonarqube.result }}';
+            const dockerResult = '${{ needs.docker-build.result }}';
+
+            const body = [
+              marker,
+              '## Constraint Check Summary',
+              '',
+              `- Go test: \`${goResult}\``,
+              `- Coverage: \`${coverageLine || 'coverage unavailable'}\``,
+              `- SonarQube: \`${sonarResult}\``,
+              `- Docker dry-run build + Trivy: \`${dockerResult}\``,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
