@@ -1,0 +1,6 @@
+apiVersion: v2
+name: pull-secrets-operator
+description: Kubernetes operator for replicating Docker pull secrets across namespaces.
+type: application
+version: 0.1.0
+appVersion: v0.1.0-beta.2

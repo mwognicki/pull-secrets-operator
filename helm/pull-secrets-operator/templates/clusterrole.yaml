@@ -1,0 +1,55 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "pull-secrets-operator.fullname" . }}
+  labels:
+    {{- include "pull-secrets-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - pullsecrets.ognicki.ooo
+    resources:
+      - registrypullsecrets
+      - pullsecretpolicies
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - pullsecrets.ognicki.ooo
+    resources:
+      - registrypullsecrets/status
+      - pullsecretpolicies/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
