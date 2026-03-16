@@ -102,12 +102,11 @@ jobs:
         uses: sonarsource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
-            -Dsonar.projectName=${{ github.event.repository.name }}
-            -Dsonar.go.coverage.reportPaths=coverage.out
+            -Dsonar.projectKey="${{ secrets.SONAR_PROJECT_KEY }}"
+            -Dsonar.projectName="${{ secrets.SONAR_PROJECT_NAME }}"
+            -Dsonar.go.coverage.reportPaths="coverage.out"
 
   docker-build:
     name: Dry-Run Docker Build
