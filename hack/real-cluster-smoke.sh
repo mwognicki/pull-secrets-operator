@@ -146,6 +146,35 @@ cleanup() {
   log_success "Smoke-test cleanup completed"
 }
 
+dump_operator_rollout_diagnostics() {
+  local deployment_name="pull-secrets-operator-manager"
+  local pod_names=""
+
+  log_info "Collecting rollout diagnostics for ${OPERATOR_NAMESPACE}/${deployment_name}"
+
+  echo "--- kubectl get deployment -n ${OPERATOR_NAMESPACE} ${deployment_name} -o wide ---"
+  kubectl -n "${OPERATOR_NAMESPACE}" get deployment "${deployment_name}" -o wide || true
+
+  echo "--- kubectl get pods -n ${OPERATOR_NAMESPACE} -o wide ---"
+  kubectl -n "${OPERATOR_NAMESPACE}" get pods -o wide || true
+
+  echo "--- kubectl describe deployment -n ${OPERATOR_NAMESPACE} ${deployment_name} ---"
+  kubectl -n "${OPERATOR_NAMESPACE}" describe deployment "${deployment_name}" || true
+
+  pod_names="$(kubectl -n "${OPERATOR_NAMESPACE}" get pods -l app.kubernetes.io/component=manager -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)"
+  if [[ -n "${pod_names}" ]]; then
+    while IFS= read -r pod_name; do
+      [[ -z "${pod_name}" ]] && continue
+      echo "--- kubectl describe pod -n ${OPERATOR_NAMESPACE} ${pod_name} ---"
+      kubectl -n "${OPERATOR_NAMESPACE}" describe pod "${pod_name}" || true
+      echo "--- kubectl logs -n ${OPERATOR_NAMESPACE} ${pod_name} --all-containers=true ---"
+      kubectl -n "${OPERATOR_NAMESPACE}" logs "${pod_name}" --all-containers=true || true
+      echo "--- kubectl logs -n ${OPERATOR_NAMESPACE} ${pod_name} --all-containers=true --previous ---"
+      kubectl -n "${OPERATOR_NAMESPACE}" logs "${pod_name}" --all-containers=true --previous || true
+    done <<< "${pod_names}"
+  fi
+}
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "missing required command: $1" >&2
@@ -300,7 +329,10 @@ install_operator() {
   kubectl apply -f "${ROOT_DIR}/config/manager/manager.yaml"
   kubectl apply -f "${ROOT_DIR}/config/rbac/manager.yaml"
   kubectl -n "${OPERATOR_NAMESPACE}" set image deployment/pull-secrets-operator-manager manager="${OPERATOR_IMAGE}"
-  kubectl -n "${OPERATOR_NAMESPACE}" rollout status deployment/pull-secrets-operator-manager --timeout="${WAIT_TIMEOUT}"
+  if ! kubectl -n "${OPERATOR_NAMESPACE}" rollout status deployment/pull-secrets-operator-manager --timeout="${WAIT_TIMEOUT}"; then
+    dump_operator_rollout_diagnostics
+    exit 1
+  fi
 }
 
 create_test_namespaces() {
