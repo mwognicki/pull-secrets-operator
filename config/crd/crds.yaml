@@ -226,7 +226,6 @@ spec:
             spec:
               type: object
               required:
-                - credentials
                 - namespaces
               properties:
                 credentials:
@@ -245,6 +244,16 @@ spec:
                     email:
                       type: string
                     auth:
+                      type: string
+                credentialsSecretRef:
+                  type: object
+                  required:
+                    - name
+                    - namespace
+                  properties:
+                    name:
+                      type: string
+                    namespace:
                       type: string
                 namespaces:
                   type: object

@@ -24,6 +24,12 @@ type RegistryCredentials struct {
 	Auth     string `json:"auth,omitempty"`
 }
 
+// SecretReference identifies a namespaced Kubernetes Secret.
+type SecretReference struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+}
+
 // NamespaceTargetOverride customizes the target secret name for one namespace.
 type NamespaceTargetOverride struct {
 	Namespace  string `json:"namespace"`
@@ -48,8 +54,14 @@ type NamespaceSelection struct {
 
 // RegistryPullSecretSpec defines registry credentials and replication intent.
 type RegistryPullSecretSpec struct {
-	Credentials RegistryCredentials `json:"credentials"`
-	Namespaces  NamespaceSelection  `json:"namespaces"`
+	// Credentials contains inline registry credentials.
+	// Exactly one of Credentials or CredentialsSecretRef should be used.
+	Credentials *RegistryCredentials `json:"credentials,omitempty"`
+	// CredentialsSecretRef references a Secret containing credential data keys:
+	// server, username, password, and optionally email and auth.
+	// Exactly one of Credentials or CredentialsSecretRef should be used.
+	CredentialsSecretRef *SecretReference   `json:"credentialsSecretRef,omitempty"`
+	Namespaces           NamespaceSelection `json:"namespaces"`
 }
 
 // RegistryPullSecretStatus describes the last observed reconciliation state.
@@ -93,6 +105,19 @@ func (in *RegistryCredentials) DeepCopy() *RegistryCredentials {
 	return out
 }
 
+func (in *SecretReference) DeepCopyInto(out *SecretReference) {
+	*out = *in
+}
+
+func (in *SecretReference) DeepCopy() *SecretReference {
+	if in == nil {
+		return nil
+	}
+	out := new(SecretReference)
+	in.DeepCopyInto(out)
+	return out
+}
+
 func (in *NamespaceTargetOverride) DeepCopyInto(out *NamespaceTargetOverride) {
 	*out = *in
 }
@@ -129,7 +154,14 @@ func (in *NamespaceSelection) DeepCopy() *NamespaceSelection {
 
 func (in *RegistryPullSecretSpec) DeepCopyInto(out *RegistryPullSecretSpec) {
 	*out = *in
-	in.Credentials.DeepCopyInto(&out.Credentials)
+	if in.Credentials != nil {
+		out.Credentials = new(RegistryCredentials)
+		in.Credentials.DeepCopyInto(out.Credentials)
+	}
+	if in.CredentialsSecretRef != nil {
+		out.CredentialsSecretRef = new(SecretReference)
+		in.CredentialsSecretRef.DeepCopyInto(out.CredentialsSecretRef)
+	}
 	in.Namespaces.DeepCopyInto(&out.Namespaces)
 }
 

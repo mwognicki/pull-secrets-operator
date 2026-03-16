@@ -38,6 +38,7 @@ See the README files inside those directories for the intended responsibilities.
 - Version: `v1alpha1`
 - Cluster-wide resource: `PullSecretPolicy`, conventionally named `cluster`
 - Per-registry resource: `RegistryPullSecret`
+- Per-registry credentials can come either from inline spec fields or from a referenced Kubernetes `Secret`
 - Per-registry default target secret name is optional and should be derived from the registry server when omitted
 - Explicit `RegistryPullSecret` changes should be reconciled promptly
 - Cluster-wide exclusions override per-registry rules and do not retroactively delete or backfill secrets
