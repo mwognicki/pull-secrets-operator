@@ -9,7 +9,12 @@ coverage.*
 .smoke-cache/
 bin/
 dist/
+
 .idea/
+.vscode/
+
+.claude/
+
 **/*.md
 
 sync-cover.out
