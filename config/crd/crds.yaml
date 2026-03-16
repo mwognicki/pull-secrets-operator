@@ -132,6 +132,7 @@ rules:
       - watch
       - create
       - update
+      - delete
   - apiGroups:
       - coordination.k8s.io
     resources:

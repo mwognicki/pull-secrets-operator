@@ -40,6 +40,12 @@ jobs:
           printf '%s\n' '${{ secrets.KUBECONFIG_CONTENT }}' > "${HOME}/.kube/config"
           chmod 600 "${HOME}/.kube/config"
 
+      - name: Restore real-cluster smoke cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .smoke-cache/real-cluster
+          key: real-cluster-smoke-cache
+
       - name: Wait for Kubernetes API access
         shell: bash
         run: |
@@ -61,3 +67,10 @@ jobs:
           PSO_TEST_REGISTRY_PASSWORD: ${{ secrets.PSO_TEST_REGISTRY_PASSWORD }}
           PSO_TEST_REGISTRY_EMAIL: ${{ secrets.PSO_TEST_REGISTRY_EMAIL }}
         run: ./hack/real-cluster-smoke.sh
+
+      - name: Save real-cluster smoke cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .smoke-cache/real-cluster
+          key: real-cluster-smoke-cache
