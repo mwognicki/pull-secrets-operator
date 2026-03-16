@@ -465,6 +465,41 @@ func TestRegistryPullSecretsForSecretIgnoresOtherObjects(t *testing.T) {
 	}
 }
 
+func TestRegistryPullSecretsForSecretIgnoresManagedReplicaSecret(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&pullsecretsv1alpha1.RegistryPullSecret{
+				ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
+				Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
+					CredentialsSecretRef: &pullsecretsv1alpha1.SecretReference{
+						Name:      "ghcr-creds",
+						Namespace: "ops",
+					},
+					Namespaces: pullsecretsv1alpha1.NamespaceSelection{Policy: pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive},
+				},
+			},
+		).Build(),
+	}
+
+	requests := reconciler.registryPullSecretsForSecret(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ghcr-pull-secret",
+			Namespace: "team-a",
+			Labels: map[string]string{
+				metadata.ManagedByLabelKey:              metadata.ManagedByLabelValue,
+				metadata.RegistryPullSecretNameLabelKey: "ghcr",
+				metadata.RegistryServerLabelKey:         "ghcr.io",
+			},
+		},
+	})
+	if len(requests) != 0 {
+		t.Fatalf("requests = %#v, want no requests", requests)
+	}
+}
+
 func TestGetPullSecretPolicyReturnsEmptyWhenSingletonMissing(t *testing.T) {
 	t.Parallel()
 

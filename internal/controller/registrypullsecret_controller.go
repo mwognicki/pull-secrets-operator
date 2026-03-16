@@ -38,6 +38,9 @@ func (r *RegistryPullSecretReconciler) Reconcile(ctx context.Context, req ctrl.R
 	var registryPullSecret pullsecretsv1alpha1.RegistryPullSecret
 	if err := r.Get(ctx, req.NamespacedName, &registryPullSecret); err != nil {
 		if apierrors.IsNotFound(err) {
+			// Source deletions are intentionally non-destructive for now. Managed
+			// replicated Secrets are left in place and no finalizer-based cleanup is
+			// attempted when the RegistryPullSecret itself disappears.
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get RegistryPullSecret %s: %w", req.NamespacedName, err)
@@ -138,6 +141,9 @@ func (r *RegistryPullSecretReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		For(&pullsecretsv1alpha1.RegistryPullSecret{}).
 		Watches(
 			&corev1.Secret{},
+			// Only source credential Secret changes trigger reconciliation. Drift in
+			// managed replica Secrets is intentionally left alone until a future
+			// RegistryPullSecret reconcile, such as after operator restart.
 			handler.EnqueueRequestsFromMapFunc(r.registryPullSecretsForSecret),
 		).
 		Complete(r)

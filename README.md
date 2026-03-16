@@ -42,6 +42,7 @@ See the README files inside those directories for the intended responsibilities.
 - Per-registry default target secret name is optional and should be derived from the registry server when omitted
 - Explicit `RegistryPullSecret` changes should be reconciled promptly
 - Cluster-wide exclusions override per-registry rules and do not retroactively delete or backfill secrets
+- Deleting a `RegistryPullSecret` is intentionally non-destructive for now and leaves already replicated Secrets in place
 - `RegistryPullSecret.status` reports reconciliation results and secret counts
 - `PullSecretPolicy.status` reports singleton activity and excluded namespace counts
 
