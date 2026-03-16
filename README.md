@@ -1,5 +1,9 @@
 # pull-secrets-operator
 
+[![codecov](https://codecov.io/github/mwognicki/pull-secrets-operator/graph/badge.svg?token=57TCBX4OK3)](https://codecov.io/github/mwognicki/pull-secrets-operator)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mwognicki/pull-secrets-operator)](https://goreportcard.com/report/github.com/mwognicki/pull-secrets-operator)
+![GitHub License](https://img.shields.io/github/license/mwognicki/pull-secrets-operator)
+
 Kubernetes operator for replicating Docker pull secrets across namespaces.
 
 ## Repository Layout
