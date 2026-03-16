@@ -98,7 +98,6 @@ namespace_allowed_by_policy() {
 }
 
 cleanup_test_resources() {
-  set +e
   log_chore "Cleaning up test-created custom resources, credentials Secret, and throwaway namespaces"
   kubectl delete registrypullsecret --ignore-not-found \
     "${TEST_PREFIX}-valid" \
@@ -107,12 +106,12 @@ cleanup_test_resources() {
     "${TEST_PREFIX}-inline" \
     "${TEST_PREFIX}-update" \
     "${TEST_PREFIX}-multi-2" \
-    "${TEST_PREFIX}-multi-3" >/dev/null 2>&1
-  kubectl delete pullsecretpolicy --ignore-not-found cluster >/dev/null 2>&1
+    "${TEST_PREFIX}-multi-3" >/dev/null 2>&1 || true
+  kubectl delete pullsecretpolicy --ignore-not-found cluster >/dev/null 2>&1 || true
   kubectl -n "${OPERATOR_NAMESPACE}" delete secret --ignore-not-found \
     "${TEST_PREFIX}-credentials" \
     "${TEST_PREFIX}-credentials-2" \
-    "${TEST_PREFIX}-credentials-3" >/dev/null 2>&1
+    "${TEST_PREFIX}-credentials-3" >/dev/null 2>&1 || true
   kubectl delete namespace --ignore-not-found \
     "${INCLUDED_NAMESPACE}" \
     "${OVERRIDE_NAMESPACE}" \
@@ -125,17 +124,16 @@ cleanup_test_resources() {
     "${UPDATE_NEW_NAMESPACE}" \
     "${COLLISION_NAMESPACE}" \
     "${DRIFT_NAMESPACE}" \
-    "${MULTI_REGISTRY_NAMESPACE}" >/dev/null 2>&1
+    "${MULTI_REGISTRY_NAMESPACE}" >/dev/null 2>&1 || true
 }
 
 cleanup_operator_install() {
-  set +e
   log_chore "Removing operator installation resources to restore a clean cluster state"
-  kubectl delete -f "${ROOT_DIR}/config/manager/manager.yaml" >/dev/null 2>&1
-  kubectl delete -f "${ROOT_DIR}/config/rbac/manager.yaml" >/dev/null 2>&1
-  kubectl delete -f "${ROOT_DIR}/config/crd/pullsecrets.ognicki.ooo_registrypullsecrets.yaml" >/dev/null 2>&1
-  kubectl delete -f "${ROOT_DIR}/config/crd/pullsecrets.ognicki.ooo_pullsecretpolicies.yaml" >/dev/null 2>&1
-  kubectl wait --for=delete namespace/"${OPERATOR_NAMESPACE}" --timeout=120s >/dev/null 2>&1
+  kubectl delete -f "${ROOT_DIR}/config/manager/manager.yaml" >/dev/null 2>&1 || true
+  kubectl delete -f "${ROOT_DIR}/config/rbac/manager.yaml" >/dev/null 2>&1 || true
+  kubectl delete -f "${ROOT_DIR}/config/crd/pullsecrets.ognicki.ooo_registrypullsecrets.yaml" >/dev/null 2>&1 || true
+  kubectl delete -f "${ROOT_DIR}/config/crd/pullsecrets.ognicki.ooo_pullsecretpolicies.yaml" >/dev/null 2>&1 || true
+  kubectl wait --for=delete namespace/"${OPERATOR_NAMESPACE}" --timeout=120s >/dev/null 2>&1 || true
 }
 
 cleanup() {
