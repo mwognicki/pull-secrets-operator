@@ -13,6 +13,14 @@ REGISTRY_SERVER="${PSO_TEST_REGISTRY_SERVER:-}"
 REGISTRY_USERNAME="${PSO_TEST_REGISTRY_USERNAME:-}"
 REGISTRY_PASSWORD="${PSO_TEST_REGISTRY_PASSWORD:-}"
 REGISTRY_EMAIL="${PSO_TEST_REGISTRY_EMAIL:-ops@example.com}"
+REGISTRY_SERVER_2="${PSO_TEST_REGISTRY_SERVER_2:-}"
+REGISTRY_USERNAME_2="${PSO_TEST_REGISTRY_USERNAME_2:-}"
+REGISTRY_PASSWORD_2="${PSO_TEST_REGISTRY_PASSWORD_2:-}"
+REGISTRY_EMAIL_2="${PSO_TEST_REGISTRY_EMAIL_2:-ops@example.com}"
+REGISTRY_SERVER_3="${PSO_TEST_REGISTRY_SERVER_3:-}"
+REGISTRY_USERNAME_3="${PSO_TEST_REGISTRY_USERNAME_3:-}"
+REGISTRY_PASSWORD_3="${PSO_TEST_REGISTRY_PASSWORD_3:-}"
+REGISTRY_EMAIL_3="${PSO_TEST_REGISTRY_EMAIL_3:-ops@example.com}"
 WAIT_TIMEOUT="${PSO_WAIT_TIMEOUT:-180s}"
 USE_CACHE="${PSO_SMOKE_USE_CACHE:-true}"
 FORCE_RERUN="${PSO_SMOKE_FORCE_RERUN:-false}"
@@ -29,8 +37,11 @@ UPDATE_OLD_NAMESPACE="${TEST_PREFIX}-update-old"
 UPDATE_NEW_NAMESPACE="${TEST_PREFIX}-update-new"
 COLLISION_NAMESPACE="${TEST_PREFIX}-collision"
 DRIFT_NAMESPACE="${TEST_PREFIX}-drift"
+MULTI_REGISTRY_NAMESPACE="${TEST_PREFIX}-multi"
 
 EXPECTED_DEFAULT_SECRET_NAME=""
+EXPECTED_DEFAULT_SECRET_NAME_2=""
+EXPECTED_DEFAULT_SECRET_NAME_3=""
 TEMP_DIR=""
 CACHE_DIR="${ROOT_DIR}/.smoke-cache/real-cluster"
 CACHE_INPUT_HASH=""
@@ -77,7 +88,8 @@ namespace_allowed_by_policy() {
     "${UPDATE_OLD_NAMESPACE}" | \
     "${UPDATE_NEW_NAMESPACE}" | \
     "${COLLISION_NAMESPACE}" | \
-    "${DRIFT_NAMESPACE}")
+    "${DRIFT_NAMESPACE}" | \
+    "${MULTI_REGISTRY_NAMESPACE}")
       return 0
       ;;
   esac
@@ -93,9 +105,14 @@ cleanup_test_resources() {
     "${TEST_PREFIX}-invalid" \
     "${TEST_PREFIX}-exclusive" \
     "${TEST_PREFIX}-inline" \
-    "${TEST_PREFIX}-update" >/dev/null 2>&1
+    "${TEST_PREFIX}-update" \
+    "${TEST_PREFIX}-multi-2" \
+    "${TEST_PREFIX}-multi-3" >/dev/null 2>&1
   kubectl delete pullsecretpolicy --ignore-not-found cluster >/dev/null 2>&1
-  kubectl -n "${OPERATOR_NAMESPACE}" delete secret --ignore-not-found "${TEST_PREFIX}-credentials" >/dev/null 2>&1
+  kubectl -n "${OPERATOR_NAMESPACE}" delete secret --ignore-not-found \
+    "${TEST_PREFIX}-credentials" \
+    "${TEST_PREFIX}-credentials-2" \
+    "${TEST_PREFIX}-credentials-3" >/dev/null 2>&1
   kubectl delete namespace --ignore-not-found \
     "${INCLUDED_NAMESPACE}" \
     "${OVERRIDE_NAMESPACE}" \
@@ -107,7 +124,8 @@ cleanup_test_resources() {
     "${UPDATE_OLD_NAMESPACE}" \
     "${UPDATE_NEW_NAMESPACE}" \
     "${COLLISION_NAMESPACE}" \
-    "${DRIFT_NAMESPACE}" >/dev/null 2>&1
+    "${DRIFT_NAMESPACE}" \
+    "${MULTI_REGISTRY_NAMESPACE}" >/dev/null 2>&1
 }
 
 cleanup_operator_install() {
@@ -300,6 +318,7 @@ create_test_namespaces() {
   kubectl create namespace "${UPDATE_NEW_NAMESPACE}"
   kubectl create namespace "${COLLISION_NAMESPACE}"
   kubectl create namespace "${DRIFT_NAMESPACE}"
+  kubectl create namespace "${MULTI_REGISTRY_NAMESPACE}"
 }
 
 write_manifests() {
@@ -390,6 +409,7 @@ spec:
       - ${INVALID_NAMESPACE}
       - ${COLLISION_NAMESPACE}
       - ${DRIFT_NAMESPACE}
+      - ${MULTI_REGISTRY_NAMESPACE}
 EOF
 
   cat > "${TEMP_DIR}/inline-rps.yaml" <<EOF
@@ -550,6 +570,64 @@ spec:
     policy: Inclusive
     namespaces:
       - ${DRIFT_NAMESPACE}
+EOF
+
+  cat > "${TEMP_DIR}/credentials-secret-2.yaml" <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${TEST_PREFIX}-credentials-2
+  namespace: ${OPERATOR_NAMESPACE}
+type: Opaque
+stringData:
+  server: ${REGISTRY_SERVER_2}
+  username: ${REGISTRY_USERNAME_2}
+  password: ${REGISTRY_PASSWORD_2}
+  email: ${REGISTRY_EMAIL_2}
+EOF
+
+  cat > "${TEMP_DIR}/credentials-secret-3.yaml" <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${TEST_PREFIX}-credentials-3
+  namespace: ${OPERATOR_NAMESPACE}
+type: Opaque
+stringData:
+  server: ${REGISTRY_SERVER_3}
+  username: ${REGISTRY_USERNAME_3}
+  password: ${REGISTRY_PASSWORD_3}
+  email: ${REGISTRY_EMAIL_3}
+EOF
+
+  cat > "${TEMP_DIR}/multi-rps-2.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-multi-2
+spec:
+  credentialsSecretRef:
+    name: ${TEST_PREFIX}-credentials-2
+    namespace: ${OPERATOR_NAMESPACE}
+  namespaces:
+    policy: Inclusive
+    namespaces:
+      - ${MULTI_REGISTRY_NAMESPACE}
+EOF
+
+  cat > "${TEMP_DIR}/multi-rps-3.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-multi-3
+spec:
+  credentialsSecretRef:
+    name: ${TEST_PREFIX}-credentials-3
+    namespace: ${OPERATOR_NAMESPACE}
+  namespaces:
+    policy: Inclusive
+    namespaces:
+      - ${MULTI_REGISTRY_NAMESPACE}
 EOF
 }
 
@@ -732,6 +810,25 @@ run_deleted_replica_secret_scenario() {
   log_test_pass "Replica deletion drift assertions completed successfully"
 }
 
+run_multi_registry_scenario() {
+  log_test_start "Multi-registry replication: additional registry credential sources must create distinct managed pull secrets in the same namespace"
+  kubectl apply -f "${TEMP_DIR}/credentials-secret-2.yaml"
+  kubectl apply -f "${TEMP_DIR}/credentials-secret-3.yaml"
+  kubectl apply -f "${TEMP_DIR}/multi-rps-2.yaml"
+  kubectl apply -f "${TEMP_DIR}/multi-rps-3.yaml"
+
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=True \
+    "registrypullsecret/${TEST_PREFIX}-multi-2" \
+    --timeout="${WAIT_TIMEOUT}"
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=True \
+    "registrypullsecret/${TEST_PREFIX}-multi-3" \
+    --timeout="${WAIT_TIMEOUT}"
+
+  assert_secret_exists "${MULTI_REGISTRY_NAMESPACE}" "${EXPECTED_DEFAULT_SECRET_NAME_2}"
+  assert_secret_exists "${MULTI_REGISTRY_NAMESPACE}" "${EXPECTED_DEFAULT_SECRET_NAME_3}"
+  log_test_pass "Multi-registry assertions completed successfully"
+}
+
 main() {
   require_command kubectl
   require_command mktemp
@@ -739,11 +836,21 @@ main() {
   require_env PSO_TEST_REGISTRY_SERVER "${REGISTRY_SERVER}"
   require_env PSO_TEST_REGISTRY_USERNAME "${REGISTRY_USERNAME}"
   require_env PSO_TEST_REGISTRY_PASSWORD "${REGISTRY_PASSWORD}"
+  require_env PSO_TEST_REGISTRY_SERVER_2 "${REGISTRY_SERVER_2}"
+  require_env PSO_TEST_REGISTRY_USERNAME_2 "${REGISTRY_USERNAME_2}"
+  require_env PSO_TEST_REGISTRY_PASSWORD_2 "${REGISTRY_PASSWORD_2}"
+  require_env PSO_TEST_REGISTRY_SERVER_3 "${REGISTRY_SERVER_3}"
+  require_env PSO_TEST_REGISTRY_USERNAME_3 "${REGISTRY_USERNAME_3}"
+  require_env PSO_TEST_REGISTRY_PASSWORD_3 "${REGISTRY_PASSWORD_3}"
 
   EXPECTED_DEFAULT_SECRET_NAME="$(derive_secret_name "${REGISTRY_SERVER}")"
+  EXPECTED_DEFAULT_SECRET_NAME_2="$(derive_secret_name "${REGISTRY_SERVER_2}")"
+  EXPECTED_DEFAULT_SECRET_NAME_3="$(derive_secret_name "${REGISTRY_SERVER_3}")"
   CACHE_INPUT_HASH="$(compute_cache_input_hash)"
   log_info "Loaded smoke-test configuration for registry ${REGISTRY_SERVER}"
+  log_info "Loaded additional registry configuration for ${REGISTRY_SERVER_2} and ${REGISTRY_SERVER_3}"
   log_info "Expected default managed Secret name: ${EXPECTED_DEFAULT_SECRET_NAME}"
+  log_info "Expected additional managed Secret names: ${EXPECTED_DEFAULT_SECRET_NAME_2}, ${EXPECTED_DEFAULT_SECRET_NAME_3}"
   log_info "Test resource prefix: ${TEST_PREFIX}"
   log_info "Smoke cache enabled: ${USE_CACHE}"
 
@@ -765,7 +872,8 @@ main() {
     scenario_is_cached "short-secret-name" &&
     scenario_is_cached "collision" &&
     scenario_is_cached "modified-replica-secret" &&
-    scenario_is_cached "deleted-replica-secret"; then
+    scenario_is_cached "deleted-replica-secret" &&
+    scenario_is_cached "multi-registry"; then
     log_test_cached "Happy-path replication scenario"
     log_test_cached "Cluster-excluded namespace validation scenario"
     log_test_cached "Exclusive policy scenario"
@@ -779,6 +887,7 @@ main() {
     log_test_cached "Foreign secret collision validation scenario"
     log_test_cached "Replica modification drift scenario"
     log_test_cached "Replica deletion drift scenario"
+    log_test_cached "Multi-registry scenario"
     log_success "All real-cluster smoke scenarios already have cached passing results for the current input hash"
     exit 0
   fi
@@ -804,6 +913,7 @@ main() {
   run_scenario "collision" "Foreign secret collision validation scenario" run_collision_validation_scenario
   run_scenario "modified-replica-secret" "Replica modification drift scenario" run_modified_replica_secret_scenario
   run_scenario "deleted-replica-secret" "Replica deletion drift scenario" run_deleted_replica_secret_scenario
+  run_scenario "multi-registry" "Multi-registry scenario" run_multi_registry_scenario
 
   log_success "Real-cluster smoke test passed for ${TEST_PREFIX}"
 }

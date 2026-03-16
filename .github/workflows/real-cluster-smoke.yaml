@@ -66,6 +66,14 @@ jobs:
           PSO_TEST_REGISTRY_USERNAME: ${{ secrets.PSO_TEST_REGISTRY_USERNAME }}
           PSO_TEST_REGISTRY_PASSWORD: ${{ secrets.PSO_TEST_REGISTRY_PASSWORD }}
           PSO_TEST_REGISTRY_EMAIL: ${{ secrets.PSO_TEST_REGISTRY_EMAIL }}
+          PSO_TEST_REGISTRY_SERVER_2: ${{ secrets.PSO_TEST_REGISTRY_SERVER_2 }}
+          PSO_TEST_REGISTRY_USERNAME_2: ${{ secrets.PSO_TEST_REGISTRY_USERNAME_2 }}
+          PSO_TEST_REGISTRY_PASSWORD_2: ${{ secrets.PSO_TEST_REGISTRY_PASSWORD_2 }}
+          PSO_TEST_REGISTRY_EMAIL_2: ${{ secrets.PSO_TEST_REGISTRY_EMAIL_2 }}
+          PSO_TEST_REGISTRY_SERVER_3: ${{ secrets.PSO_TEST_REGISTRY_SERVER_3 }}
+          PSO_TEST_REGISTRY_USERNAME_3: ${{ secrets.PSO_TEST_REGISTRY_USERNAME_3 }}
+          PSO_TEST_REGISTRY_PASSWORD_3: ${{ secrets.PSO_TEST_REGISTRY_PASSWORD_3 }}
+          PSO_TEST_REGISTRY_EMAIL_3: ${{ secrets.PSO_TEST_REGISTRY_EMAIL_3 }}
         run: ./hack/real-cluster-smoke.sh
 
       - name: Save real-cluster smoke cache
