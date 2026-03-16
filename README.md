@@ -64,3 +64,7 @@ See the README files inside those directories for the intended responsibilities.
 - Stable releases should use immutable SemVer tags such as `v0.1.0`
 - The manager binary embeds three build fields: operator version, git commit, and build date
 - The manager supports `--version` to print the embedded build metadata
+
+## Remaining Work
+
+- The remaining non-CI roadmap is collected in [docs/non-ci-todos.md](/Users/marek/Work/Ognicki/pull-secrets-operator/docs/non-ci-todos.md)
