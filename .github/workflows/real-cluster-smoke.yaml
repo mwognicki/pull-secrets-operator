@@ -1,0 +1,63 @@
+name: Real Cluster Smoke Tests
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Container image tag to test
+        required: true
+        default: v0.1.0-beta.1
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    name: Real Cluster Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Connect Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: ${{ secrets.TS_TAGS }}
+
+      - name: Write kubeconfig
+        shell: bash
+        run: |
+          mkdir -p "${HOME}/.kube"
+          printf '%s\n' '${{ secrets.KUBECONFIG_CONTENT }}' > "${HOME}/.kube/config"
+          chmod 600 "${HOME}/.kube/config"
+
+      - name: Wait for Kubernetes API access
+        shell: bash
+        run: |
+          for attempt in $(seq 1 30); do
+            if kubectl cluster-info >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "unable to reach Kubernetes API through Tailscale" >&2
+          kubectl cluster-info
+          exit 1
+
+      - name: Run real-cluster smoke tests
+        env:
+          PSO_IMAGE: ghcr.io/mwognicki/pull-secrets-operator:${{ inputs.image_tag }}
+          PSO_TEST_REGISTRY_SERVER: ${{ secrets.PSO_TEST_REGISTRY_SERVER }}
+          PSO_TEST_REGISTRY_USERNAME: ${{ secrets.PSO_TEST_REGISTRY_USERNAME }}
+          PSO_TEST_REGISTRY_PASSWORD: ${{ secrets.PSO_TEST_REGISTRY_PASSWORD }}
+          PSO_TEST_REGISTRY_EMAIL: ${{ secrets.PSO_TEST_REGISTRY_EMAIL }}
+        run: ./hack/real-cluster-smoke.sh

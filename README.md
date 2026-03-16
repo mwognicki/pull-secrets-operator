@@ -78,3 +78,4 @@ See the README files inside those directories for the intended responsibilities.
 ## Remaining Work
 
 - The remaining non-CI roadmap is collected in [docs/non-ci-todos.md](/Users/marek/Work/Ognicki/pull-secrets-operator/docs/non-ci-todos.md)
+- The first local real-cluster smoke test flow is documented in [docs/real-cluster-testing.md](/Users/marek/Work/Ognicki/pull-secrets-operator/docs/real-cluster-testing.md)

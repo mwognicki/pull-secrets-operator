@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: pull-secrets-operator-system
+  name: pull-secrets
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: pull-secrets-operator-manager
-  namespace: pull-secrets-operator-system
+  namespace: pull-secrets
 spec:
   replicas: 1
   selector:
