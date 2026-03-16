@@ -51,10 +51,10 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          go test -coverprofile=coverage.out ./...
+          go test -coverprofile=coverage.txt ./...
           status=$?
-          if [[ -f coverage.out ]]; then
-            coverage_line="$(go tool cover -func=coverage.out | tail -n 1)"
+          if [[ -f coverage.txt ]]; then
+            coverage_line="$(go tool cover -func=coverage.txt | tail -n 1)"
           else
             coverage_line="coverage unavailable"
           fi
@@ -64,6 +64,13 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
           exit $status
+
+      - name: Upload coverage reports to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.txt
 
       - name: Publish coverage summary
         if: always()
@@ -79,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-coverage
-          path: coverage.out
+          path: coverage.txt
           if-no-files-found: ignore
 
   sonarqube:
