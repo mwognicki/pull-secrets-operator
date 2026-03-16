@@ -72,11 +72,49 @@ jobs:
             echo '${{ steps.run-tests.outputs.coverage_line }}'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.out
+          if-no-files-found: ignore
+
+  sonarqube:
+    name: SonarQube Check
+    runs-on: ubuntu-latest
+    needs:
+      - go-test
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: go-coverage
+          path: .
+
+      - name: Run SonarQube scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
+            -Dsonar.projectName=${{ github.event.repository.name }}
+            -Dsonar.go.coverage.reportPaths=coverage.out
+
   docker-build:
     name: Dry-Run Docker Build
     runs-on: ubuntu-latest
     needs:
       - go-test
+      - sonarqube
 
     steps:
       - name: Check out repository
@@ -105,6 +143,7 @@ jobs:
     if: always()
     needs:
       - go-test
+      - sonarqube
       - docker-build
 
     steps:
@@ -115,6 +154,7 @@ jobs:
             const marker = '<!-- pull-secrets-operator-constraint-summary -->';
             const coverageLine = `${{ toJSON(needs.go-test.outputs.coverage_line) }}`.replace(/^"|"$/g, '');
             const goResult = '${{ needs.go-test.result }}';
+            const sonarResult = '${{ needs.sonarqube.result }}';
             const dockerResult = '${{ needs.docker-build.result }}';
 
             const body = [
@@ -123,6 +163,7 @@ jobs:
               '',
               `- Go test: \`${goResult}\``,
               `- Coverage: \`${coverageLine || 'coverage unavailable'}\``,
+              `- SonarQube: \`${sonarResult}\``,
               `- Docker dry-run build: \`${dockerResult}\``,
             ].join('\n');
 
