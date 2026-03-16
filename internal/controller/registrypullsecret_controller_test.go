@@ -2,14 +2,19 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	pullsecretsv1alpha1 "github.com/mwognicki/pull-secrets-operator/api/pullsecrets/v1alpha1"
@@ -30,6 +35,28 @@ func TestRegistryPullSecretReconcileIgnoresMissingResource(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v, want nil", err)
+	}
+}
+
+func TestRegistryPullSecretReconcileReturnsGetError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client: base,
+			getFunc: func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				return fmt.Errorf("boom")
+			},
+		},
+	}
+
+	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "ghcr"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "get RegistryPullSecret /ghcr") {
+		t.Fatalf("Reconcile() error = %v, want wrapped get error", err)
 	}
 }
 
@@ -364,6 +391,42 @@ func TestRegistryPullSecretReconcileUpdatesFailureStatus(t *testing.T) {
 	}
 }
 
+func TestRegistryPullSecretReconcileReturnsStatusUpdateError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&pullsecretsv1alpha1.RegistryPullSecret{}).WithObjects(
+		&pullsecretsv1alpha1.RegistryPullSecret{
+			ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
+			Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
+				Credentials: &pullsecretsv1alpha1.RegistryCredentials{
+					Server:   "ghcr.io",
+					Username: "octocat",
+					Password: "s3cret",
+				},
+				Namespaces: pullsecretsv1alpha1.NamespaceSelection{
+					Policy:     pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive,
+					Namespaces: []string{"team-a"},
+				},
+			},
+		},
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "team-a"}},
+	).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client:       base,
+			statusWriter: testStatusWriter{SubResourceWriter: base.Status(), updateErr: fmt.Errorf("status update failed")},
+		},
+	}
+
+	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "ghcr"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "update RegistryPullSecret status /ghcr") {
+		t.Fatalf("Reconcile() error = %v, want wrapped status update error", err)
+	}
+}
+
 func TestRegistryPullSecretReconcileSupportsCredentialsSecretRef(t *testing.T) {
 	t.Parallel()
 
@@ -408,6 +471,33 @@ func TestRegistryPullSecretReconcileSupportsCredentialsSecretRef(t *testing.T) {
 	}
 	if secret.Labels[metadata.RegistryServerLabelKey] != "ghcr.io" {
 		t.Fatalf("registry server label = %q, want ghcr.io", secret.Labels[metadata.RegistryServerLabelKey])
+	}
+}
+
+func TestResolveRegistryCredentialsSupportsInlineCredentials(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+
+	credentials, err := reconciler.resolveRegistryCredentials(context.Background(), &pullsecretsv1alpha1.RegistryPullSecret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
+		Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
+			Credentials: &pullsecretsv1alpha1.RegistryCredentials{
+				Server:   "ghcr.io",
+				Username: "octocat",
+				Password: "s3cret",
+			},
+			Namespaces: pullsecretsv1alpha1.NamespaceSelection{Policy: pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive},
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolveRegistryCredentials() error = %v", err)
+	}
+	if credentials.Server != "ghcr.io" {
+		t.Fatalf("credentials = %#v, want ghcr.io server", credentials)
 	}
 }
 
@@ -500,6 +590,28 @@ func TestRegistryPullSecretsForSecretIgnoresManagedReplicaSecret(t *testing.T) {
 	}
 }
 
+func TestRegistryPullSecretsForSecretReturnsEmptyOnListError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client: base,
+			listFunc: func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+				return fmt.Errorf("list failed")
+			},
+		},
+	}
+
+	requests := reconciler.registryPullSecretsForSecret(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr-creds", Namespace: "ops"},
+	})
+	if requests != nil {
+		t.Fatalf("requests = %#v, want nil on list error", requests)
+	}
+}
+
 func TestGetPullSecretPolicyReturnsEmptyWhenSingletonMissing(t *testing.T) {
 	t.Parallel()
 
@@ -538,6 +650,283 @@ func TestListExistingSecretsIndexesByNamespaceAndName(t *testing.T) {
 	}
 	if _, ok := secrets["team-b/two"]; !ok {
 		t.Fatalf("expected team-b/two key in %#v", secrets)
+	}
+}
+
+func TestListNamespacesReturnsNames(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "team-a"}},
+			&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "team-b"}},
+		).Build(),
+	}
+
+	namespaces, err := reconciler.listNamespaces(context.Background())
+	if err != nil {
+		t.Fatalf("listNamespaces() error = %v", err)
+	}
+	if len(namespaces) != 2 {
+		t.Fatalf("namespaces = %#v, want 2 entries", namespaces)
+	}
+}
+
+func TestGetPullSecretPolicyReturnsWrappedError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client: base,
+			getFunc: func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if key.Name == pullsecretsv1alpha1.PullSecretPolicySingletonName {
+					return fmt.Errorf("policy get failed")
+				}
+				return base.Get(ctx, key, obj, opts...)
+			},
+		},
+	}
+
+	_, err := reconciler.getPullSecretPolicy(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "get PullSecretPolicy") {
+		t.Fatalf("getPullSecretPolicy() error = %v, want wrapped error", err)
+	}
+}
+
+func TestListNamespacesReturnsWrappedError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client: base,
+			listFunc: func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+				if _, ok := list.(*corev1.NamespaceList); ok {
+					return fmt.Errorf("namespace list failed")
+				}
+				return base.List(ctx, list, opts...)
+			},
+		},
+	}
+
+	_, err := reconciler.listNamespaces(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "list namespaces") {
+		t.Fatalf("listNamespaces() error = %v, want wrapped error", err)
+	}
+}
+
+func TestListExistingSecretsReturnsWrappedError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client: base,
+			listFunc: func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+				if _, ok := list.(*corev1.SecretList); ok {
+					return fmt.Errorf("secret list failed")
+				}
+				return base.List(ctx, list, opts...)
+			},
+		},
+	}
+
+	_, err := reconciler.listExistingSecrets(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "list secrets") {
+		t.Fatalf("listExistingSecrets() error = %v, want wrapped error", err)
+	}
+}
+
+func TestApplySecretCreatesSecretWhenMissing(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+
+	err := reconciler.applySecret(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr-pull-secret", Namespace: "team-a"},
+		Type:       corev1.SecretTypeDockerConfigJson,
+		Data:       map[string][]byte{".dockerconfigjson": []byte("data")},
+	})
+	if err != nil {
+		t.Fatalf("applySecret() error = %v", err)
+	}
+}
+
+func TestApplySecretReturnsGetError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client: base,
+			getFunc: func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if _, ok := obj.(*corev1.Secret); ok {
+					return fmt.Errorf("get failed")
+				}
+				return base.Get(ctx, key, obj, opts...)
+			},
+		},
+	}
+
+	err := reconciler.applySecret(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr-pull-secret", Namespace: "team-a"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "get Secret team-a/ghcr-pull-secret") {
+		t.Fatalf("applySecret() error = %v, want wrapped get error", err)
+	}
+}
+
+func TestApplySecretReturnsCreateError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client: base,
+			createFunc: func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+				return fmt.Errorf("create failed")
+			},
+		},
+	}
+
+	err := reconciler.applySecret(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr-pull-secret", Namespace: "team-a"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "create Secret team-a/ghcr-pull-secret") {
+		t.Fatalf("applySecret() error = %v, want wrapped create error", err)
+	}
+}
+
+func TestApplySecretReturnsUpdateError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "ghcr-pull-secret", Namespace: "team-a"}},
+	).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client: base,
+			updateFunc: func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+				return fmt.Errorf("update failed")
+			},
+		},
+	}
+
+	err := reconciler.applySecret(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr-pull-secret", Namespace: "team-a"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "update Secret team-a/ghcr-pull-secret") {
+		t.Fatalf("applySecret() error = %v, want wrapped update error", err)
+	}
+}
+
+func TestDeleteSecretIgnoresNotFound(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client: base,
+			deleteFunc: func(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
+				return apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, obj.GetName())
+			},
+		},
+	}
+
+	if err := reconciler.deleteSecret(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr-pull-secret", Namespace: "team-a"},
+	}); err != nil {
+		t.Fatalf("deleteSecret() error = %v, want nil", err)
+	}
+}
+
+func TestDeleteSecretReturnsWrappedError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client: base,
+			deleteFunc: func(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
+				return fmt.Errorf("delete failed")
+			},
+		},
+	}
+
+	err := reconciler.deleteSecret(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr-pull-secret", Namespace: "team-a"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "delete Secret team-a/ghcr-pull-secret") {
+		t.Fatalf("deleteSecret() error = %v, want wrapped delete error", err)
+	}
+}
+
+func TestUpdateRegistryPullSecretStatusSuccess(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&pullsecretsv1alpha1.RegistryPullSecret{}).WithObjects(
+		&pullsecretsv1alpha1.RegistryPullSecret{
+			ObjectMeta: metav1.ObjectMeta{Name: "ghcr", Generation: 5},
+		},
+	).Build()
+	reconciler := &RegistryPullSecretReconciler{Client: base}
+
+	resource := &pullsecretsv1alpha1.RegistryPullSecret{}
+	if err := base.Get(context.Background(), types.NamespacedName{Name: "ghcr"}, resource); err != nil {
+		t.Fatalf("get RegistryPullSecret error = %v", err)
+	}
+	err := reconciler.updateRegistryPullSecretStatus(context.Background(), resource, registryPullSecretReconcileStatus{
+		desiredSecretCount: 3,
+		appliedSecretCount: 2,
+		deletedSecretCount: 1,
+	}, nil)
+	if err != nil {
+		t.Fatalf("updateRegistryPullSecretStatus() error = %v", err)
+	}
+
+	var updated pullsecretsv1alpha1.RegistryPullSecret
+	if err := base.Get(context.Background(), types.NamespacedName{Name: "ghcr"}, &updated); err != nil {
+		t.Fatalf("get updated RegistryPullSecret error = %v", err)
+	}
+	if updated.Status.DesiredSecretCount != 3 || updated.Status.AppliedSecretCount != 2 || updated.Status.DeletedSecretCount != 1 {
+		t.Fatalf("status counts = %#v", updated.Status)
+	}
+	if cond := apimeta.FindStatusCondition(updated.Status.Conditions, "Ready"); cond == nil || cond.Status != metav1.ConditionTrue {
+		t.Fatalf("Ready condition = %#v, want true", updated.Status.Conditions)
+	}
+}
+
+func TestUpdateRegistryPullSecretStatusReturnsWrappedError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	base := fake.NewClientBuilder().WithScheme(scheme).Build()
+	reconciler := &RegistryPullSecretReconciler{
+		Client: testClient{
+			Client:       base,
+			statusWriter: testStatusWriter{updateErr: fmt.Errorf("status failed")},
+		},
+	}
+
+	err := reconciler.updateRegistryPullSecretStatus(context.Background(), &pullsecretsv1alpha1.RegistryPullSecret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
+	}, registryPullSecretReconcileStatus{}, nil)
+	if err == nil || !strings.Contains(err.Error(), "update RegistryPullSecret status /ghcr") {
+		t.Fatalf("updateRegistryPullSecretStatus() error = %v, want wrapped status error", err)
 	}
 }
 
@@ -589,4 +978,85 @@ func mustDockerConfigJSON(t *testing.T, credentials pullsecretsv1alpha1.Registry
 	}
 
 	return rendered
+}
+
+type testClient struct {
+	client.Client
+	getFunc      func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error
+	listFunc     func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error
+	createFunc   func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error
+	updateFunc   func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error
+	deleteFunc   func(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error
+	statusWriter client.SubResourceWriter
+}
+
+func (c testClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if c.getFunc != nil {
+		return c.getFunc(ctx, key, obj, opts...)
+	}
+	return c.Client.Get(ctx, key, obj, opts...)
+}
+
+func (c testClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	if c.listFunc != nil {
+		return c.listFunc(ctx, list, opts...)
+	}
+	return c.Client.List(ctx, list, opts...)
+}
+
+func (c testClient) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+	if c.createFunc != nil {
+		return c.createFunc(ctx, obj, opts...)
+	}
+	return c.Client.Create(ctx, obj, opts...)
+}
+
+func (c testClient) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	if c.updateFunc != nil {
+		return c.updateFunc(ctx, obj, opts...)
+	}
+	return c.Client.Update(ctx, obj, opts...)
+}
+
+func (c testClient) Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
+	if c.deleteFunc != nil {
+		return c.deleteFunc(ctx, obj, opts...)
+	}
+	return c.Client.Delete(ctx, obj, opts...)
+}
+
+func (c testClient) Status() client.SubResourceWriter {
+	if c.statusWriter != nil {
+		return c.statusWriter
+	}
+	return c.Client.Status()
+}
+
+type testStatusWriter struct {
+	client.SubResourceWriter
+	updateErr error
+}
+
+func (w testStatusWriter) Create(ctx context.Context, obj client.Object, subResource client.Object, opts ...client.SubResourceCreateOption) error {
+	if w.SubResourceWriter != nil {
+		return w.SubResourceWriter.Create(ctx, obj, subResource, opts...)
+	}
+	return nil
+}
+
+func (w testStatusWriter) Update(ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+	if w.updateErr != nil {
+		return w.updateErr
+	}
+	if w.SubResourceWriter != nil {
+		return w.SubResourceWriter.Update(ctx, obj, opts...)
+	}
+	return nil
+}
+
+func (w testStatusWriter) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+	if w.SubResourceWriter != nil {
+		return w.SubResourceWriter.Patch(ctx, obj, patch, opts...)
+	}
+	return nil
 }
