@@ -3,6 +3,7 @@ import starlight from '@astrojs/starlight';
 
 export default defineConfig({
   site: 'https://mwognicki.github.io/pull-secrets-operator',
+  base: '/pull-secrets-operator',
   integrations: [
     starlight({
       title: 'pull-secrets-operator',
