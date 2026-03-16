@@ -1,24 +1,6 @@
 name: Docker Build Check
 
 on:
-  pull_request:
-    branches:
-      - develop
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
-    paths:
-      - Dockerfile
-      - .dockerignore
-      - go.mod
-      - go.sum
-      - api/**
-      - cmd/**
-      - internal/**
-      - pkg/**
-      - .github/workflows/docker-build-pr.yaml
   workflow_dispatch:
     inputs:
       ref:
@@ -30,7 +12,6 @@ jobs:
   docker-build:
     name: Test Docker Build
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
 
     steps:
       - name: Check out repository
