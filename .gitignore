@@ -29,6 +29,11 @@ go.work.sum
 # env file
 .env
 
+# Docs (Astro)
+docs/node_modules/
+docs/dist/
+docs/.astro/
+
 # Editor/IDE
 .idea/
 .vscode/
