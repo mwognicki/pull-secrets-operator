@@ -1,0 +1,13 @@
+# ArtifactHub repository ownership verification.
+#
+# Steps to activate:
+#   1. Go to https://artifacthub.io and sign in.
+#   2. Add a new repository of type "Helm charts (OCI)" pointing to:
+#        oci://ghcr.io/mwognicki/charts/pull-secrets-operator
+#   3. Copy the repositoryID assigned by ArtifactHub and paste it below.
+#   4. Commit and push — the next Helm release workflow run will push this
+#      file as an OCI artifact and ArtifactHub will verify ownership.
+#
+repositoryID: ""  # TODO: fill in after registering on artifacthub.io
+owners:
+  - name: mwognicki
