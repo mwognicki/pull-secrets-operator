@@ -36,7 +36,6 @@ jobs:
           tags: |
             type=ref,event=tag
             type=raw,value=${{ github.ref_name }}-{{sha}}
-            type=raw,value=latest
 
       - name: Prepare build date
         id: build-date
