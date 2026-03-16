@@ -9,7 +9,9 @@ const (
 
 var (
 	// Version identifies the operator build version.
-	Version = "0.1.0-dev"
+	// Release images should override this at build time from the pushed Git tag.
+	// Local or ad-hoc builds default to a generic development marker.
+	Version = "dev"
 	// GitCommit identifies the source revision used for the build.
 	GitCommit = "unknown"
 	// BuildDate identifies when the binary was built.

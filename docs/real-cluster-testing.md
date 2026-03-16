@@ -27,6 +27,7 @@ It covers:
 - collision rejection for a foreign unmanaged target `Secret`
 - behavior when managed replica `Secret` objects are manually modified
 - behavior when managed replica `Secret` objects are manually deleted
+- multi-registry coverage using additional registry providers
 
 It does not yet cover:
 - multiple registry providers in one run
@@ -58,6 +59,14 @@ Optional environment variables:
 
 ```bash
 export PSO_TEST_REGISTRY_EMAIL='ops@example.com'
+export PSO_TEST_REGISTRY_SERVER_2='ghcr.io'
+export PSO_TEST_REGISTRY_USERNAME_2='your-second-user'
+export PSO_TEST_REGISTRY_PASSWORD_2='your-second-password-or-token'
+export PSO_TEST_REGISTRY_EMAIL_2='ops@example.com'
+export PSO_TEST_REGISTRY_SERVER_3='registry.gitlab.com'
+export PSO_TEST_REGISTRY_USERNAME_3='your-third-user'
+export PSO_TEST_REGISTRY_PASSWORD_3='your-third-password-or-token'
+export PSO_TEST_REGISTRY_EMAIL_3='ops@example.com'
 export PSO_IMAGE='ghcr.io/mwognicki/pull-secrets-operator:v0.1.0-beta.1'
 export PSO_OPERATOR_NAMESPACE='pull-secrets'
 export PSO_WAIT_TIMEOUT='180s'
@@ -135,6 +144,14 @@ That workflow currently runs on `workflow_dispatch` and expects these GitHub Sec
 - `PSO_TEST_REGISTRY_USERNAME`
 - `PSO_TEST_REGISTRY_PASSWORD`
 - `PSO_TEST_REGISTRY_EMAIL`
+- `PSO_TEST_REGISTRY_SERVER_2`
+- `PSO_TEST_REGISTRY_USERNAME_2`
+- `PSO_TEST_REGISTRY_PASSWORD_2`
+- `PSO_TEST_REGISTRY_EMAIL_2`
+- `PSO_TEST_REGISTRY_SERVER_3`
+- `PSO_TEST_REGISTRY_USERNAME_3`
+- `PSO_TEST_REGISTRY_PASSWORD_3`
+- `PSO_TEST_REGISTRY_EMAIL_3`
 
 It provides:
 - cluster connectivity through Tailscale
@@ -171,6 +188,14 @@ Its execution flow is:
 | `PSO_TEST_REGISTRY_USERNAME` | Registry username used by the smoke test credentials Secret. |
 | `PSO_TEST_REGISTRY_PASSWORD` | Registry password or token used by the smoke test credentials Secret. |
 | `PSO_TEST_REGISTRY_EMAIL` | Optional registry email used by the smoke test credentials Secret. |
+| `PSO_TEST_REGISTRY_SERVER_2` | Second registry server used by the multi-registry smoke scenario. |
+| `PSO_TEST_REGISTRY_USERNAME_2` | Second registry username used by the multi-registry smoke scenario. |
+| `PSO_TEST_REGISTRY_PASSWORD_2` | Second registry password or token used by the multi-registry smoke scenario. |
+| `PSO_TEST_REGISTRY_EMAIL_2` | Optional second registry email used by the multi-registry smoke scenario. |
+| `PSO_TEST_REGISTRY_SERVER_3` | Third registry server used by the multi-registry smoke scenario. |
+| `PSO_TEST_REGISTRY_USERNAME_3` | Third registry username used by the multi-registry smoke scenario. |
+| `PSO_TEST_REGISTRY_PASSWORD_3` | Third registry password or token used by the multi-registry smoke scenario. |
+| `PSO_TEST_REGISTRY_EMAIL_3` | Optional third registry email used by the multi-registry smoke scenario. |
 
 ### Manual Trigger
 

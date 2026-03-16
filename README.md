@@ -3,6 +3,9 @@
 [![codecov](https://codecov.io/github/mwognicki/pull-secrets-operator/graph/badge.svg?token=57TCBX4OK3)](https://codecov.io/github/mwognicki/pull-secrets-operator)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mwognicki/pull-secrets-operator)](https://goreportcard.com/report/github.com/mwognicki/pull-secrets-operator)
 ![GitHub License](https://img.shields.io/github/license/mwognicki/pull-secrets-operator)
+![GitHub last commit (branch)](https://img.shields.io/github/last-commit/mwognicki/pull-secrets-operator/main)
+![GitHub Tag](https://img.shields.io/github/v/tag/mwognicki/pull-secrets-operator)
+[![Sonar Quality Gate](https://img.shields.io/sonar/quality_gate/mwognicki_pull-secrets-operator?server=https%3A%2F%2Fsonarcloud.io)](https://sonarcloud.io/project/overview?id=mwognicki_pull-secrets-operator)
 
 Kubernetes operator for replicating Docker pull secrets across namespaces.
 
@@ -63,7 +66,7 @@ See the README files inside those directories for the intended responsibilities.
 
 ## Container Build
 
-- The manager image is built from the hand-written [Dockerfile](/Users/marek/Work/Ognicki/pull-secrets-operator/Dockerfile)
+- The manager image is built from the hand-written [Dockerfile](./Dockerfile)
 - The runtime base image is `almalinux/10-kitten-micro`
 
 ## Versioning Policy
@@ -77,5 +80,4 @@ See the README files inside those directories for the intended responsibilities.
 
 ## Remaining Work
 
-- The remaining non-CI roadmap is collected in [docs/non-ci-todos.md](/Users/marek/Work/Ognicki/pull-secrets-operator/docs/non-ci-todos.md)
-- The first local real-cluster smoke test flow is documented in [docs/real-cluster-testing.md](/Users/marek/Work/Ognicki/pull-secrets-operator/docs/real-cluster-testing.md)
+- The first local real-cluster smoke test flow is documented in [docs/real-cluster-testing.md](./docs/real-cluster-testing.md)

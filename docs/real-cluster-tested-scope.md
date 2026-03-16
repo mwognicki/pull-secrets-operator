@@ -33,5 +33,5 @@ The current smoke flow in [hack/real-cluster-smoke.sh](/Users/marek/Work/Ognicki
 | Behavior when managed replica `Secret` objects are manually deleted | Yes | Passed | Verified by the current real-cluster smoke flow. |
 | `PullSecretPolicy` validity edge cases, including duplicate excluded namespaces | No | Not run | No real-cluster scenario exists for this behavior yet. |
 | `PullSecretPolicy` validity edge cases, including invalid excluded namespace names | No | Not run | No real-cluster scenario exists for this behavior yet. |
-| Multi-registry coverage using additional registry providers | No | Not run | No real-cluster scenario exists for this behavior yet. |
+| Multi-registry coverage using additional registry providers | Yes | Passed | Verified by the current real-cluster smoke flow. |
 | GitHub Actions based real-cluster execution with Tailscale and kubeconfig setup | No | Not run | No CI-backed real-cluster execution exists yet. |
