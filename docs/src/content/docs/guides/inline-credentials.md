@@ -8,7 +8,7 @@ sidebar:
 Inline credentials are the simplest way to provide registry credentials. All fields are embedded directly in the `RegistryPullSecret` spec — no separate `Secret` object required.
 
 :::caution
-`RegistryPullSecret` is a cluster-scoped resource. Its contents are visible to anyone with `get` or `list` access to `RegistryPullSecret` objects. If your credentials are sensitive, prefer [referenced credentials](/guides/referenced-credentials/) instead.
+`RegistryPullSecret` is a cluster-scoped resource. Its contents are visible to anyone with `get` or `list` access to `RegistryPullSecret` objects. If your credentials are sensitive, prefer [referenced credentials](../referenced-credentials/) instead.
 :::
 
 ## Example

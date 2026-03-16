@@ -31,7 +31,7 @@ Only the `PullSecretPolicy` named `cluster` is treated as the active policy. Add
 | `activeSingleton` | boolean | `true` when this object is named `cluster` and recognized as the active singleton |
 | `valid` | boolean | `true` when the policy passes validation |
 | `lastSyncTime` | timestamp | Time of the last reconciliation of this object |
-| `conditions` | Condition[] | See [Status and conditions](/reference/status-and-conditions/) |
+| `conditions` | Condition[] | See [Status and conditions](../status-and-conditions/) |
 
 ## Validation rules
 

@@ -9,7 +9,7 @@ This guide walks you through replicating a pull secret for `ghcr.io` into all na
 
 ## Before you begin
 
-Make sure the operator is [installed](/getting-started/installation/) and running:
+Make sure the operator is [installed](../installation/) and running:
 
 ```bash
 kubectl -n pull-secrets rollout status deployment/pull-secrets-operator-manager
