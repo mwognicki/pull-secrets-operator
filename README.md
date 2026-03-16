@@ -5,7 +5,7 @@
 ![GitHub License](https://img.shields.io/github/license/mwognicki/pull-secrets-operator)
 ![GitHub last commit (branch)](https://img.shields.io/github/last-commit/mwognicki/pull-secrets-operator/main)
 ![GitHub Tag](https://img.shields.io/github/v/tag/mwognicki/pull-secrets-operator)
-[![Sonar Quality Gate](https://img.shields.io/sonar/quality_gate/mwognicki_pull-secrets-operator?server=https%3A%2F%2Fsonarcloud.io)](https://sonarcloud.io/project/overview?id=mwognicki_pull-secrets-operator)
+[![Discord](https://img.shields.io/discord/1483122428132589584)](https://discord.com/channels/1483122428132589584)
 
 Kubernetes operator for replicating Docker pull secrets across namespaces.
 
