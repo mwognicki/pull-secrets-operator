@@ -14,6 +14,7 @@ on:
       - reopened
       - ready_for_review
     paths:
+      - Dockerfile
       - go.mod
       - go.sum
       - sonar-project.properties
@@ -50,10 +51,10 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          go test -coverprofile=coverage.out ./...
+          go test -coverprofile=coverage.txt ./...
           status=$?
-          if [[ -f coverage.out ]]; then
-            coverage_line="$(go tool cover -func=coverage.out | tail -n 1)"
+          if [[ -f coverage.txt ]]; then
+            coverage_line="$(go tool cover -func=coverage.txt | tail -n 1)"
           else
             coverage_line="coverage unavailable"
           fi
@@ -63,6 +64,13 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
           exit $status
+
+      - name: Upload coverage reports to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.txt
 
       - name: Publish coverage summary
         if: always()
@@ -78,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: go-coverage
-          path: coverage.out
+          path: coverage.txt
           if-no-files-found: ignore
 
   sonarqube:
@@ -104,7 +112,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   docker-build:
-    name: Dry-Run Docker Build
+    name: Dry-Run Docker Build and Trivy
     runs-on: ubuntu-latest
     needs:
       - go-test
@@ -123,6 +131,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
+          load: true
           tags: ghcr.io/mwognicki/pull-secrets-operator:constraint-check
           build-args: |
             VERSION=constraint-check
@@ -130,6 +139,16 @@ jobs:
             BUILD_DATE=${{ github.event.repository.updated_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Aqua Security Trivy
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: ghcr.io/mwognicki/pull-secrets-operator:constraint-check
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
 
   pr-comment:
     name: PR Comment Summary
@@ -158,7 +177,7 @@ jobs:
               `- Go test: \`${goResult}\``,
               `- Coverage: \`${coverageLine || 'coverage unavailable'}\``,
               `- SonarQube: \`${sonarResult}\``,
-              `- Docker dry-run build: \`${dockerResult}\``,
+              `- Docker dry-run build + Trivy: \`${dockerResult}\``,
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({

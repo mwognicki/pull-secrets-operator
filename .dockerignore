@@ -5,6 +5,7 @@ coverage.*
 *.coverprofile
 *.out
 *.test
+.gocache/
 bin/
 dist/
 .idea/

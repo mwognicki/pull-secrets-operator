@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlbuilder "sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -32,12 +33,53 @@ type registryPullSecretReconcileStatus struct {
 	deletedSecretCount int32
 }
 
+type registryPullSecretControllerBuilder interface {
+	For(object client.Object, opts ...ctrlbuilder.ForOption) registryPullSecretControllerBuilder
+	Watches(
+		object client.Object,
+		eventHandler handler.TypedEventHandler[client.Object, reconcile.Request],
+		opts ...ctrlbuilder.WatchesOption,
+	) registryPullSecretControllerBuilder
+	Complete(reconciler reconcile.TypedReconciler[reconcile.Request]) error
+}
+
+type registryPullSecretControllerBuilderAdapter struct {
+	builder *ctrlbuilder.TypedBuilder[reconcile.Request]
+}
+
+func (a registryPullSecretControllerBuilderAdapter) For(object client.Object, opts ...ctrlbuilder.ForOption) registryPullSecretControllerBuilder {
+	a.builder = a.builder.For(object, opts...)
+	return a
+}
+
+func (a registryPullSecretControllerBuilderAdapter) Watches(
+	object client.Object,
+	eventHandler handler.TypedEventHandler[client.Object, reconcile.Request],
+	opts ...ctrlbuilder.WatchesOption,
+) registryPullSecretControllerBuilder {
+	a.builder = a.builder.Watches(object, eventHandler, opts...)
+	return a
+}
+
+func (a registryPullSecretControllerBuilderAdapter) Complete(reconciler reconcile.TypedReconciler[reconcile.Request]) error {
+	return a.builder.Complete(reconciler)
+}
+
+var newRegistryPullSecretControllerBuilder = func(mgr ctrl.Manager) registryPullSecretControllerBuilder {
+	return registryPullSecretControllerBuilderAdapter{
+		builder: ctrl.NewControllerManagedBy(mgr),
+	}
+}
+
 func (r *RegistryPullSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	var registryPullSecret pullsecretsv1alpha1.RegistryPullSecret
 	if err := r.Get(ctx, req.NamespacedName, &registryPullSecret); err != nil {
 		if apierrors.IsNotFound(err) {
+			// Source deletions are intentionally non-destructive for now. Managed
+			// replicated Secrets are left in place and no finalizer-based cleanup is
+			// attempted when the RegistryPullSecret itself disappears.
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get RegistryPullSecret %s: %w", req.NamespacedName, err)
@@ -134,10 +176,13 @@ func (r *RegistryPullSecretReconciler) resolveRegistryCredentials(
 }
 
 func (r *RegistryPullSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	return newRegistryPullSecretControllerBuilder(mgr).
 		For(&pullsecretsv1alpha1.RegistryPullSecret{}).
 		Watches(
 			&corev1.Secret{},
+			// Only source credential Secret changes trigger reconciliation. Drift in
+			// managed replica Secrets is intentionally left alone until a future
+			// RegistryPullSecret reconcile, such as after operator restart.
 			handler.EnqueueRequestsFromMapFunc(r.registryPullSecretsForSecret),
 		).
 		Complete(r)
