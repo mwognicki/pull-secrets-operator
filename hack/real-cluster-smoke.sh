@@ -3,9 +3,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT_DIR}/hack/lib/load-dotenv.sh"
+load_default_dotenv_files "${ROOT_DIR}"
+
 TEST_ID="${PSO_TEST_ID:-$(date +%Y%m%d%H%M%S)}"
 OPERATOR_NAMESPACE="${PSO_OPERATOR_NAMESPACE:-pull-secrets}"
-OPERATOR_IMAGE="${PSO_IMAGE:-ghcr.io/mwognicki/pull-secrets-operator:dev-alpha1}"
+OPERATOR_IMAGE="${PSO_IMAGE:-ghcr.io/mwognicki/pull-secrets-operator:v0.1.0-beta.1}"
 REGISTRY_SERVER="${PSO_TEST_REGISTRY_SERVER:-}"
 REGISTRY_USERNAME="${PSO_TEST_REGISTRY_USERNAME:-}"
 REGISTRY_PASSWORD="${PSO_TEST_REGISTRY_PASSWORD:-}"
@@ -21,8 +24,35 @@ INVALID_NAMESPACE="${TEST_PREFIX}-invalid"
 EXPECTED_DEFAULT_SECRET_NAME=""
 TEMP_DIR="$(mktemp -d)"
 
-cleanup() {
+COLOR_BOLD='\033[1m'
+COLOR_BLUE='\033[34m'
+COLOR_GREEN='\033[32m'
+COLOR_YELLOW='\033[33m'
+COLOR_RESET='\033[0m'
+
+log_info() {
+  printf '%b\n' "${COLOR_BOLD}${COLOR_BLUE}[smoke]${COLOR_RESET} $*"
+}
+
+log_success() {
+  printf '%b\n' "${COLOR_BOLD}${COLOR_GREEN}[smoke]${COLOR_RESET} $*"
+}
+
+log_chore() {
+  printf '%b\n' "${COLOR_BOLD}${COLOR_YELLOW}Maintenance/chore:${COLOR_RESET} $*"
+}
+
+log_test_start() {
+  printf '%b\n' "${COLOR_BOLD}${COLOR_BLUE}Test/assertion:${COLOR_RESET} $*"
+}
+
+log_test_pass() {
+  printf '%b\n' "${COLOR_BOLD}${COLOR_GREEN}Test/assertion passed:${COLOR_RESET} $*"
+}
+
+cleanup_test_resources() {
   set +e
+  log_chore "Cleaning up test-created custom resources, credentials Secret, and throwaway namespaces"
   kubectl delete registrypullsecret --ignore-not-found "${TEST_PREFIX}-valid" "${TEST_PREFIX}-invalid" >/dev/null 2>&1
   kubectl delete pullsecretpolicy --ignore-not-found cluster >/dev/null 2>&1
   kubectl -n "${OPERATOR_NAMESPACE}" delete secret --ignore-not-found "${TEST_PREFIX}-credentials" >/dev/null 2>&1
@@ -31,7 +61,24 @@ cleanup() {
     "${OVERRIDE_NAMESPACE}" \
     "${EXCLUDED_NAMESPACE}" \
     "${INVALID_NAMESPACE}" >/dev/null 2>&1
+}
+
+cleanup_operator_install() {
+  set +e
+  log_chore "Removing operator installation resources to restore a clean cluster state"
+  kubectl delete -f "${ROOT_DIR}/config/manager/manager.yaml" >/dev/null 2>&1
+  kubectl delete -f "${ROOT_DIR}/config/rbac/manager.yaml" >/dev/null 2>&1
+  kubectl delete -f "${ROOT_DIR}/config/crd/pullsecrets.ognicki.ooo_registrypullsecrets.yaml" >/dev/null 2>&1
+  kubectl delete -f "${ROOT_DIR}/config/crd/pullsecrets.ognicki.ooo_pullsecretpolicies.yaml" >/dev/null 2>&1
+  kubectl wait --for=delete namespace/"${OPERATOR_NAMESPACE}" --timeout=120s >/dev/null 2>&1
+}
+
+cleanup() {
+  log_info "Starting smoke-test cleanup"
+  cleanup_test_resources
+  cleanup_operator_install
   rm -rf "${TEMP_DIR}"
+  log_success "Smoke-test cleanup completed"
 }
 
 require_command() {
@@ -124,6 +171,7 @@ derive_secret_name() {
 }
 
 install_operator() {
+  log_chore "Installing CRDs, manager deployment, and RBAC for image ${OPERATOR_IMAGE}"
   kubectl apply -f "${ROOT_DIR}/config/crd/pullsecrets.ognicki.ooo_pullsecretpolicies.yaml"
   kubectl apply -f "${ROOT_DIR}/config/crd/pullsecrets.ognicki.ooo_registrypullsecrets.yaml"
   kubectl apply -f "${ROOT_DIR}/config/manager/manager.yaml"
@@ -133,6 +181,7 @@ install_operator() {
 }
 
 create_test_namespaces() {
+  log_chore "Creating unique test namespaces for included, overridden, excluded, and invalid scenarios"
   kubectl create namespace "${INCLUDED_NAMESPACE}"
   kubectl create namespace "${OVERRIDE_NAMESPACE}"
   kubectl create namespace "${EXCLUDED_NAMESPACE}"
@@ -140,6 +189,7 @@ create_test_namespaces() {
 }
 
 write_manifests() {
+  log_chore "Rendering temporary manifests for the cluster policy, credentials Secret, and RegistryPullSecret scenarios"
   cat > "${TEMP_DIR}/policy.yaml" <<EOF
 apiVersion: pullsecrets.ognicki.ooo/v1alpha1
 kind: PullSecretPolicy
@@ -201,6 +251,7 @@ EOF
 }
 
 run_valid_scenario() {
+  log_test_start "Happy-path replication: included namespaces receive managed pull secrets, overrides rename them, and excluded namespaces stay untouched"
   kubectl apply -f "${TEMP_DIR}/policy.yaml"
   kubectl apply -f "${TEMP_DIR}/credentials-secret.yaml"
   kubectl apply -f "${TEMP_DIR}/valid-rps.yaml"
@@ -212,9 +263,11 @@ run_valid_scenario() {
   assert_secret_exists "${INCLUDED_NAMESPACE}" "${EXPECTED_DEFAULT_SECRET_NAME}"
   assert_secret_exists "${OVERRIDE_NAMESPACE}" "${TEST_PREFIX}-override-secret"
   assert_secret_missing "${EXCLUDED_NAMESPACE}" "${EXPECTED_DEFAULT_SECRET_NAME}"
+  log_test_pass "Happy-path replication assertions completed successfully"
 }
 
 run_invalid_scenario() {
+  log_test_start "Validation failure: an explicitly targeted namespace that is excluded cluster-wide must drive Ready=False with ValidationFailed"
   kubectl apply -f "${TEMP_DIR}/invalid-rps.yaml"
 
   kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=False \
@@ -223,6 +276,7 @@ run_invalid_scenario() {
 
   assert_condition_reason "registrypullsecret" "${TEST_PREFIX}-invalid" "Ready" "ValidationFailed"
   assert_ready_status "pullsecretpolicy" "cluster" "True"
+  log_test_pass "Validation-failure assertions completed successfully"
 }
 
 main() {
@@ -235,9 +289,14 @@ main() {
   trap cleanup EXIT
 
   EXPECTED_DEFAULT_SECRET_NAME="$(derive_secret_name "${REGISTRY_SERVER}")"
+  log_info "Loaded smoke-test configuration for registry ${REGISTRY_SERVER}"
+  log_info "Expected default managed Secret name: ${EXPECTED_DEFAULT_SECRET_NAME}"
+  log_info "Test resource prefix: ${TEST_PREFIX}"
 
   kubectl version --client >/dev/null
-  kubectl auth can-i get namespaces >/dev/null
+  kubectl auth can-i get namespaces --all-namespaces >/dev/null
+  log_chore "Performing pre-run reset to avoid interference from previous smoke runs"
+  cleanup_operator_install
 
   install_operator
   create_test_namespaces
@@ -245,7 +304,7 @@ main() {
   run_valid_scenario
   run_invalid_scenario
 
-  echo "real-cluster smoke test passed for ${TEST_PREFIX}"
+  log_success "Real-cluster smoke test passed for ${TEST_PREFIX}"
 }
 
 main "$@"

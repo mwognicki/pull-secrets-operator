@@ -2,6 +2,8 @@
 
 This document describes the first local iteration of real Kubernetes cluster testing for the operator.
 
+For a concise coverage summary, see [docs/real-cluster-tested-scope.md](/Users/marek/Work/Ognicki/pull-secrets-operator/docs/real-cluster-tested-scope.md).
+
 ## Current Scope
 
 The current smoke test is intentionally small and is meant to run from a developer machine against a real cluster.
@@ -28,6 +30,8 @@ Use:
 hack/real-cluster-smoke.sh
 ```
 
+The script automatically loads repository-root `.env` and `.env.local` files before reading its `PSO_*` settings.
+
 Required environment variables:
 
 ```bash
@@ -40,7 +44,7 @@ Optional environment variables:
 
 ```bash
 export PSO_TEST_REGISTRY_EMAIL='ops@example.com'
-export PSO_IMAGE='ghcr.io/mwognicki/pull-secrets-operator:dev-alpha1'
+export PSO_IMAGE='ghcr.io/mwognicki/pull-secrets-operator:v0.1.0-beta.1'
 export PSO_OPERATOR_NAMESPACE='pull-secrets'
 export PSO_WAIT_TIMEOUT='180s'
 export PSO_TEST_ID='manualrun01'
@@ -61,6 +65,13 @@ The script also creates:
 - the singleton `PullSecretPolicy` named `cluster`
 
 Cleanup is attempted automatically when the script exits.
+The script also performs a pre-run reset of the operator installation so repeated runs start from a clean slate.
+
+That reset currently removes:
+- the operator deployment resources from `config/manager`
+- the service account and RBAC from `config/rbac`
+- both CRDs from `config/crd`
+- the operator namespace `pull-secrets`
 
 ## Future CI Direction
 
