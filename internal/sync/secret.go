@@ -60,6 +60,10 @@ func DesiredSecrets(
 	allNamespaces []string,
 	existingSecrets map[string]*corev1.Secret,
 ) ([]DesiredSecret, error) {
+	if err := ValidateRegistryPullSecret(registryPullSecret, credentials, policy, existingSecrets); err != nil {
+		return nil, err
+	}
+
 	targets, err := EffectiveTargets(registryPullSecret, credentials, policy, allNamespaces)
 	if err != nil {
 		return nil, err

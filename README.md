@@ -43,6 +43,9 @@ See the README files inside those directories for the intended responsibilities.
 - Explicit `RegistryPullSecret` changes should be reconciled promptly
 - Cluster-wide exclusions override per-registry rules and do not retroactively delete or backfill secrets
 - Deleting a `RegistryPullSecret` is intentionally non-destructive for now and leaves already replicated Secrets in place
+- Explicit namespace entries and namespace overrides must use valid Kubernetes namespace names, may not be duplicated within their lists, and wildcard namespace patterns are not supported
+- Resulting pull secret names must be Kubernetes-compatible and contain at least 3 alphanumeric characters
+- Explicitly selected namespaces may not conflict with cluster-wide exclusions, and target names may not collide with existing foreign Secrets
 - `RegistryPullSecret.status` reports reconciliation results and secret counts
 - `PullSecretPolicy.status` reports singleton activity and excluded namespace counts
 

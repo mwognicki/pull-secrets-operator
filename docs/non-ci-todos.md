@@ -7,10 +7,10 @@ This document collects the remaining non-CI work for the project after the curre
 The API currently has baseline schema and controller checks, but validation is still fairly light.
 
 Remaining work:
-- tighten CRD validation for names, required combinations, and field formats
-- validate namespace override consistency
+- tighten CRD validation markers and schema-level constraints where practical
+- validate registry connectivity and credentials against the target registry endpoint
 - validate credential inputs more strictly where appropriate
-- add controller-side defensive validation for invalid but admitted objects
+- decide whether namespace wildcard support should be introduced in a future API version
 
 Why it matters:
 - stronger validation reduces ambiguous reconciliation behavior

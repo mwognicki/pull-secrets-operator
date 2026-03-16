@@ -44,3 +44,5 @@ Notes:
 - `targetSecretName` is optional and should be derived from the registry server when omitted.
 - explicit `RegistryPullSecret` changes should be reconciled promptly by the operator.
 - `PullSecretPolicy` exclusions take precedence over `RegistryPullSecret` targeting.
+- namespace names must be valid Kubernetes namespace names and wildcard namespace patterns are not supported.
+- resulting pull secret names must be valid Kubernetes Secret names and contain at least 3 alphanumeric characters.
