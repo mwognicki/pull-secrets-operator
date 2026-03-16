@@ -1,4 +1,4 @@
-name: Go Test Constraint Check
+name: PR Constraint Checks
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -20,7 +20,7 @@ on:
       - cmd/**
       - internal/**
       - pkg/**
-      - .github/workflows/go-test-constraint.yaml
+      - .github/workflows/pr-constraint-checks.yaml
 
 permissions:
   contents: read
