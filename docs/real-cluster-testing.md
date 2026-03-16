@@ -19,8 +19,8 @@ It covers:
 It does not yet cover:
 - multiple registry providers in one run
 - mutation or deletion scenarios after initial sync
-- automatic execution from GitHub Actions
-- Tailscale or kubeconfig bootstrapping inside CI
+- automatic pull-request execution from GitHub Actions
+- PR-scoped image build and test wiring inside CI
 
 ## Script
 
@@ -77,8 +77,73 @@ That reset currently removes:
 
 This script is intended to become the shared test entrypoint for a later GitHub Actions workflow.
 
-The future CI wrapper will need to provide:
+The repository now also includes a manual GitHub workflow at [.github/workflows/real-cluster-smoke.yaml](/Users/marek/Work/Ognicki/pull-secrets-operator/.github/workflows/real-cluster-smoke.yaml).
+
+That workflow currently runs on `workflow_dispatch` and expects these GitHub Secrets:
+
+- `TS_OAUTH_CLIENT_ID`
+- `TS_OAUTH_SECRET`
+- `TS_TAGS`
+- `KUBECONFIG_CONTENT`
+- `PSO_TEST_REGISTRY_SERVER`
+- `PSO_TEST_REGISTRY_USERNAME`
+- `PSO_TEST_REGISTRY_PASSWORD`
+- `PSO_TEST_REGISTRY_EMAIL`
+
+It provides:
 - cluster connectivity through Tailscale
 - kubeconfig material from GitHub Secrets
 - test registry credentials from GitHub Secrets
-- an operator image built from the pull request under test
+- a selectable image tag input, currently defaulting to `v0.1.0-beta.1`
+- an ephemeral Tailscale node for the workflow run through `tailscale/github-action@v4`
+
+It does not yet run automatically for pull requests.
+
+## Manual GitHub Workflow
+
+The `Real Cluster Smoke Tests` workflow is the first CI wrapper around the same smoke harness used locally.
+
+Its execution flow is:
+
+1. check out the repository
+2. install `kubectl`
+3. connect the runner to the Tailnet through Tailscale
+4. write kubeconfig from a GitHub Secret
+5. wait for Kubernetes API reachability
+6. run [hack/real-cluster-smoke.sh](/Users/marek/Work/Ognicki/pull-secrets-operator/hack/real-cluster-smoke.sh)
+
+### Required Secrets
+
+| Secret | Purpose |
+| --- | --- |
+| `TS_OAUTH_CLIENT_ID` | Tailscale OAuth client ID for the GitHub Action. |
+| `TS_OAUTH_SECRET` | Tailscale OAuth client secret for the GitHub Action. |
+| `TS_TAGS` | Tailscale tags applied to the ephemeral workflow node. |
+| `KUBECONFIG_CONTENT` | Kubeconfig content used by `kubectl` during the smoke run. |
+| `PSO_TEST_REGISTRY_SERVER` | Registry server used by the smoke test credentials Secret. |
+| `PSO_TEST_REGISTRY_USERNAME` | Registry username used by the smoke test credentials Secret. |
+| `PSO_TEST_REGISTRY_PASSWORD` | Registry password or token used by the smoke test credentials Secret. |
+| `PSO_TEST_REGISTRY_EMAIL` | Optional registry email used by the smoke test credentials Secret. |
+
+### Manual Trigger
+
+Run the workflow from the GitHub Actions UI and provide the `image_tag` input.
+
+Example:
+
+```text
+v0.1.0-beta.1
+```
+
+The workflow then tests:
+
+```text
+ghcr.io/mwognicki/pull-secrets-operator:<image_tag>
+```
+
+### Current Limitations
+
+- it is manual-only for now
+- it assumes the selected image tag already exists in GHCR
+- it does not yet build the PR image inside the same workflow
+- it does not yet report results back to a pull request as a constraint check
