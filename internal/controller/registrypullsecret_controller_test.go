@@ -17,6 +17,22 @@ import (
 	"github.com/mwognicki/pull-secrets-operator/pkg/metadata"
 )
 
+func TestRegistryPullSecretReconcileIgnoresMissingResource(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+
+	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "missing"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil", err)
+	}
+}
+
 func TestRegistryPullSecretReconcileCreatesMissingSecrets(t *testing.T) {
 	t.Parallel()
 
@@ -26,7 +42,7 @@ func TestRegistryPullSecretReconcileCreatesMissingSecrets(t *testing.T) {
 			&pullsecretsv1alpha1.RegistryPullSecret{
 				ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
 				Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
-					Credentials: pullsecretsv1alpha1.RegistryCredentials{
+					Credentials: &pullsecretsv1alpha1.RegistryCredentials{
 						Server:   "ghcr.io",
 						Username: "octocat",
 						Password: "s3cret",
@@ -85,7 +101,7 @@ func TestRegistryPullSecretReconcileUpdatesExistingSecret(t *testing.T) {
 	registryPullSecret := &pullsecretsv1alpha1.RegistryPullSecret{
 		ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
 		Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
-			Credentials: pullsecretsv1alpha1.RegistryCredentials{
+			Credentials: &pullsecretsv1alpha1.RegistryCredentials{
 				Server:   "ghcr.io",
 				Username: "octocat",
 				Password: "new-secret",
@@ -131,7 +147,7 @@ func TestRegistryPullSecretReconcileUpdatesExistingSecret(t *testing.T) {
 		t.Fatalf("get reconciled Secret error = %v", err)
 	}
 
-	want := mustDockerConfigJSON(t, registryPullSecret.Spec.Credentials)
+	want := mustDockerConfigJSON(t, *registryPullSecret.Spec.Credentials)
 	got := secret.Data[".dockerconfigjson"]
 	if string(got) != string(want) {
 		t.Fatalf("reconciled docker config = %s, want %s", string(got), string(want))
@@ -153,7 +169,7 @@ func TestRegistryPullSecretReconcileRespectsClusterWideExclusions(t *testing.T) 
 			&pullsecretsv1alpha1.RegistryPullSecret{
 				ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
 				Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
-					Credentials: pullsecretsv1alpha1.RegistryCredentials{
+					Credentials: &pullsecretsv1alpha1.RegistryCredentials{
 						Server:   "ghcr.io",
 						Username: "octocat",
 						Password: "s3cret",
@@ -191,7 +207,7 @@ func TestRegistryPullSecretReconcileDeletesRenamedSecret(t *testing.T) {
 			&pullsecretsv1alpha1.RegistryPullSecret{
 				ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
 				Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
-					Credentials: pullsecretsv1alpha1.RegistryCredentials{
+					Credentials: &pullsecretsv1alpha1.RegistryCredentials{
 						Server:   "ghcr.io",
 						Username: "octocat",
 						Password: "s3cret",
@@ -254,7 +270,7 @@ func TestRegistryPullSecretReconcileDeletesRemovedNamespaceSecret(t *testing.T) 
 			&pullsecretsv1alpha1.RegistryPullSecret{
 				ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
 				Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
-					Credentials: pullsecretsv1alpha1.RegistryCredentials{
+					Credentials: &pullsecretsv1alpha1.RegistryCredentials{
 						Server:   "ghcr.io",
 						Username: "octocat",
 						Password: "s3cret",
@@ -316,7 +332,7 @@ func TestRegistryPullSecretReconcileUpdatesFailureStatus(t *testing.T) {
 			&pullsecretsv1alpha1.RegistryPullSecret{
 				ObjectMeta: metav1.ObjectMeta{Name: "broken", Generation: 7},
 				Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
-					Credentials: pullsecretsv1alpha1.RegistryCredentials{
+					Credentials: &pullsecretsv1alpha1.RegistryCredentials{
 						Server: "",
 					},
 					Namespaces: pullsecretsv1alpha1.NamespaceSelection{
@@ -345,6 +361,173 @@ func TestRegistryPullSecretReconcileUpdatesFailureStatus(t *testing.T) {
 	}
 	if len(registryPullSecret.Status.Conditions) != 1 || registryPullSecret.Status.Conditions[0].Status != metav1.ConditionFalse {
 		t.Fatalf("status conditions = %#v, want Ready=False", registryPullSecret.Status.Conditions)
+	}
+}
+
+func TestRegistryPullSecretReconcileSupportsCredentialsSecretRef(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&pullsecretsv1alpha1.RegistryPullSecret{}).WithObjects(
+			&pullsecretsv1alpha1.RegistryPullSecret{
+				ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
+				Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
+					CredentialsSecretRef: &pullsecretsv1alpha1.SecretReference{
+						Name:      "ghcr-creds",
+						Namespace: "ops",
+					},
+					Namespaces: pullsecretsv1alpha1.NamespaceSelection{
+						Policy:     pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive,
+						Namespaces: []string{"team-a"},
+					},
+				},
+			},
+			&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "team-a"}},
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "ghcr-creds", Namespace: "ops"},
+				Data: map[string][]byte{
+					"server":   []byte("ghcr.io"),
+					"username": []byte("octocat"),
+					"password": []byte("s3cret"),
+				},
+			},
+		).Build(),
+	}
+
+	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "ghcr"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	var secret corev1.Secret
+	if err := reconciler.Get(context.Background(), types.NamespacedName{Name: "ghcr-pull-secret", Namespace: "team-a"}, &secret); err != nil {
+		t.Fatalf("get reconciled Secret error = %v", err)
+	}
+	if secret.Labels[metadata.RegistryServerLabelKey] != "ghcr.io" {
+		t.Fatalf("registry server label = %q, want ghcr.io", secret.Labels[metadata.RegistryServerLabelKey])
+	}
+}
+
+func TestRegistryPullSecretsForSecret(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&pullsecretsv1alpha1.RegistryPullSecret{
+				ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
+				Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
+					CredentialsSecretRef: &pullsecretsv1alpha1.SecretReference{
+						Name:      "ghcr-creds",
+						Namespace: "ops",
+					},
+					Namespaces: pullsecretsv1alpha1.NamespaceSelection{Policy: pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive},
+				},
+			},
+			&pullsecretsv1alpha1.RegistryPullSecret{
+				ObjectMeta: metav1.ObjectMeta{Name: "dockerhub"},
+				Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
+					CredentialsSecretRef: &pullsecretsv1alpha1.SecretReference{
+						Name:      "dockerhub-creds",
+						Namespace: "ops",
+					},
+					Namespaces: pullsecretsv1alpha1.NamespaceSelection{Policy: pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive},
+				},
+			},
+		).Build(),
+	}
+
+	requests := reconciler.registryPullSecretsForSecret(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr-creds", Namespace: "ops"},
+	})
+
+	if len(requests) != 1 || requests[0].Name != "ghcr" {
+		t.Fatalf("requests = %#v, want single ghcr request", requests)
+	}
+}
+
+func TestRegistryPullSecretsForSecretIgnoresOtherObjects(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+
+	requests := reconciler.registryPullSecretsForSecret(context.Background(), &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "team-a"},
+	})
+	if requests != nil {
+		t.Fatalf("requests = %#v, want nil", requests)
+	}
+}
+
+func TestGetPullSecretPolicyReturnsEmptyWhenSingletonMissing(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+
+	policy, err := reconciler.getPullSecretPolicy(context.Background())
+	if err != nil {
+		t.Fatalf("getPullSecretPolicy() error = %v", err)
+	}
+	if policy.Name != "" {
+		t.Fatalf("policy name = %q, want empty", policy.Name)
+	}
+}
+
+func TestListExistingSecretsIndexesByNamespaceAndName(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "one", Namespace: "team-a"}},
+			&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "two", Namespace: "team-b"}},
+		).Build(),
+	}
+
+	secrets, err := reconciler.listExistingSecrets(context.Background())
+	if err != nil {
+		t.Fatalf("listExistingSecrets() error = %v", err)
+	}
+
+	if _, ok := secrets["team-a/one"]; !ok {
+		t.Fatalf("expected team-a/one key in %#v", secrets)
+	}
+	if _, ok := secrets["team-b/two"]; !ok {
+		t.Fatalf("expected team-b/two key in %#v", secrets)
+	}
+}
+
+func TestResolveRegistryCredentialsReturnsMissingSecretError(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+
+	_, err := reconciler.resolveRegistryCredentials(context.Background(), &pullsecretsv1alpha1.RegistryPullSecret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
+		Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
+			CredentialsSecretRef: &pullsecretsv1alpha1.SecretReference{
+				Name:      "missing",
+				Namespace: "ops",
+			},
+			Namespaces: pullsecretsv1alpha1.NamespaceSelection{
+				Policy: pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive,
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("resolveRegistryCredentials() error = nil, want missing Secret error")
 	}
 }
 

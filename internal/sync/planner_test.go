@@ -142,7 +142,7 @@ func TestEffectiveTargets(t *testing.T) {
 
 	registryPullSecret := pullsecretsv1alpha1.RegistryPullSecret{
 		Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
-			Credentials: pullsecretsv1alpha1.RegistryCredentials{
+			Credentials: &pullsecretsv1alpha1.RegistryCredentials{
 				Server: "ghcr.io",
 			},
 			Namespaces: pullsecretsv1alpha1.NamespaceSelection{
@@ -164,7 +164,7 @@ func TestEffectiveTargets(t *testing.T) {
 		},
 	}
 
-	got, err := EffectiveTargets(registryPullSecret, policy, []string{"team-a", "team-b", "team-c", "team-d"})
+	got, err := EffectiveTargets(registryPullSecret, *registryPullSecret.Spec.Credentials, policy, []string{"team-a", "team-b", "team-c", "team-d"})
 	if err != nil {
 		t.Fatalf("EffectiveTargets() error = %v", err)
 	}
@@ -184,7 +184,7 @@ func TestEffectiveTargetsUsesExplicitDefaultSecretName(t *testing.T) {
 
 	registryPullSecret := pullsecretsv1alpha1.RegistryPullSecret{
 		Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
-			Credentials: pullsecretsv1alpha1.RegistryCredentials{
+			Credentials: &pullsecretsv1alpha1.RegistryCredentials{
 				Server: "docker.toturi.cloud",
 			},
 			Namespaces: pullsecretsv1alpha1.NamespaceSelection{
@@ -195,7 +195,7 @@ func TestEffectiveTargetsUsesExplicitDefaultSecretName(t *testing.T) {
 		},
 	}
 
-	got, err := EffectiveTargets(registryPullSecret, pullsecretsv1alpha1.PullSecretPolicy{}, []string{"team-a"})
+	got, err := EffectiveTargets(registryPullSecret, *registryPullSecret.Spec.Credentials, pullsecretsv1alpha1.PullSecretPolicy{}, []string{"team-a"})
 	if err != nil {
 		t.Fatalf("EffectiveTargets() error = %v", err)
 	}

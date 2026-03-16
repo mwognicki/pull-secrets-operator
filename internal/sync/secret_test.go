@@ -48,11 +48,9 @@ func TestBuildPullSecret(t *testing.T) {
 	secret := BuildPullSecret(
 		pullsecretsv1alpha1.RegistryPullSecret{
 			ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
-			Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
-				Credentials: pullsecretsv1alpha1.RegistryCredentials{
-					Server: "ghcr.io",
-				},
-			},
+		},
+		pullsecretsv1alpha1.RegistryCredentials{
+			Server: "ghcr.io",
 		},
 		NamespacePlan{Namespace: "team-a", SecretName: "ghcr-pull-secret"},
 		[]byte(`{"auths":{"ghcr.io":{"auth":"abc"}}}`),
@@ -109,7 +107,7 @@ func TestDesiredSecrets(t *testing.T) {
 	registryPullSecret := pullsecretsv1alpha1.RegistryPullSecret{
 		ObjectMeta: metav1.ObjectMeta{Name: "ghcr"},
 		Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
-			Credentials: pullsecretsv1alpha1.RegistryCredentials{
+			Credentials: &pullsecretsv1alpha1.RegistryCredentials{
 				Server:   "ghcr.io",
 				Username: "octocat",
 				Password: "s3cret",
@@ -148,6 +146,7 @@ func TestDesiredSecrets(t *testing.T) {
 
 	got, err := DesiredSecrets(
 		registryPullSecret,
+		*registryPullSecret.Spec.Credentials,
 		pullsecretsv1alpha1.PullSecretPolicy{},
 		[]string{"team-a", "team-b", "team-c"},
 		existing,

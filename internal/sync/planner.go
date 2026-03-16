@@ -21,10 +21,11 @@ type NamespacePlan struct {
 // resource across a provided namespace inventory.
 func EffectiveTargets(
 	registryPullSecret pullsecretsv1alpha1.RegistryPullSecret,
+	credentials pullsecretsv1alpha1.RegistryCredentials,
 	policy pullsecretsv1alpha1.PullSecretPolicy,
 	allNamespaces []string,
 ) ([]NamespacePlan, error) {
-	defaultSecretName, err := DefaultTargetSecretName(registryPullSecret.Spec.Credentials.Server)
+	defaultSecretName, err := DefaultTargetSecretName(credentials.Server)
 	if err != nil {
 		return nil, err
 	}

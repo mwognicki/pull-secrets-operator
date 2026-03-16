@@ -11,6 +11,7 @@ Current API notes:
 - Cluster-wide exclusions always take precedence over per-registry targeting rules.
 - Changing cluster-wide exclusions does not retroactively delete or backfill replicated secrets.
 - `RegistryPullSecret` changes should be reconciled promptly so explicit spec updates are reflected quickly.
+- `RegistryPullSecret` supports either inline credentials or a `credentialsSecretRef`, but not both at the same time.
 - `RegistryPullSecret.spec.namespaces.targetSecretName` is optional and should be derived from the registry server when omitted.
 - Namespace overrides are modeled as a list.
 - `RegistryPullSecret.status` reports observed generation, secret counts, last sync time, and a `Ready` condition.

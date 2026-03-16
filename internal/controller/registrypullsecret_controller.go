@@ -13,7 +13,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pullsecretsv1alpha1 "github.com/mwognicki/pull-secrets-operator/api/pullsecrets/v1alpha1"
 	"github.com/mwognicki/pull-secrets-operator/internal/sync"
@@ -56,6 +58,10 @@ func (r *RegistryPullSecretReconciler) reconcileRegistryPullSecret(
 	if err != nil {
 		return registryPullSecretReconcileStatus{}, err
 	}
+	credentials, err := r.resolveRegistryCredentials(ctx, registryPullSecret)
+	if err != nil {
+		return registryPullSecretReconcileStatus{}, err
+	}
 
 	allNamespaces, err := r.listNamespaces(ctx)
 	if err != nil {
@@ -67,7 +73,7 @@ func (r *RegistryPullSecretReconciler) reconcileRegistryPullSecret(
 		return registryPullSecretReconcileStatus{}, err
 	}
 
-	desiredSecrets, err := sync.DesiredSecrets(*registryPullSecret, policy, allNamespaces, existingSecrets)
+	desiredSecrets, err := sync.DesiredSecrets(*registryPullSecret, credentials, policy, allNamespaces, existingSecrets)
 	if err != nil {
 		return registryPullSecretReconcileStatus{}, fmt.Errorf("build desired Secrets for %s: %w", client.ObjectKeyFromObject(registryPullSecret), err)
 	}
@@ -102,10 +108,68 @@ func (r *RegistryPullSecretReconciler) reconcileRegistryPullSecret(
 	return status, nil
 }
 
+func (r *RegistryPullSecretReconciler) resolveRegistryCredentials(
+	ctx context.Context,
+	registryPullSecret *pullsecretsv1alpha1.RegistryPullSecret,
+) (pullsecretsv1alpha1.RegistryCredentials, error) {
+	var sourceSecret *corev1.Secret
+	if registryPullSecret.Spec.CredentialsSecretRef != nil {
+		var secret corev1.Secret
+		key := types.NamespacedName{
+			Name:      registryPullSecret.Spec.CredentialsSecretRef.Name,
+			Namespace: registryPullSecret.Spec.CredentialsSecretRef.Namespace,
+		}
+		if err := r.Get(ctx, key, &secret); err != nil {
+			return pullsecretsv1alpha1.RegistryCredentials{}, fmt.Errorf("get credentials Secret %s: %w", key, err)
+		}
+		sourceSecret = &secret
+	}
+
+	credentials, err := sync.ResolveRegistryCredentials(registryPullSecret.Spec, sourceSecret)
+	if err != nil {
+		return pullsecretsv1alpha1.RegistryCredentials{}, fmt.Errorf("resolve credentials for %s: %w", client.ObjectKeyFromObject(registryPullSecret), err)
+	}
+
+	return credentials, nil
+}
+
 func (r *RegistryPullSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pullsecretsv1alpha1.RegistryPullSecret{}).
+		Watches(
+			&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(r.registryPullSecretsForSecret),
+		).
 		Complete(r)
+}
+
+func (r *RegistryPullSecretReconciler) registryPullSecretsForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
+	secret, ok := obj.(*corev1.Secret)
+	if !ok {
+		return nil
+	}
+
+	var registryPullSecretList pullsecretsv1alpha1.RegistryPullSecretList
+	if err := r.List(ctx, &registryPullSecretList); err != nil {
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0)
+	for _, registryPullSecret := range registryPullSecretList.Items {
+		ref := registryPullSecret.Spec.CredentialsSecretRef
+		if ref == nil {
+			continue
+		}
+		if ref.Name != secret.Name || ref.Namespace != secret.Namespace {
+			continue
+		}
+
+		requests = append(requests, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(&registryPullSecret),
+		})
+	}
+
+	return requests
 }
 
 func (r *RegistryPullSecretReconciler) getPullSecretPolicy(ctx context.Context) (pullsecretsv1alpha1.PullSecretPolicy, error) {
