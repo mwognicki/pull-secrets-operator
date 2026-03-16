@@ -4,3 +4,20 @@ description: Kubernetes operator for replicating Docker pull secrets across name
 type: application
 version: 0.1.0
 appVersion: v0.1.0-beta.2
+annotations:
+  artifacthub.io/license: MIT
+  artifacthub.io/operator: "true"
+  artifacthub.io/operatorCapabilities: Basic Install
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://mwognicki.github.io/pull-secrets-operator
+    - name: Source
+      url: https://github.com/mwognicki/pull-secrets-operator
+    - name: Discord
+      url: https://discord.com/channels/1483122428132589584
+  artifacthub.io/maintainers: |
+    - name: Marek Kapusta-Ognicki
+      email: marek@ognicki.ooo
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial public release
