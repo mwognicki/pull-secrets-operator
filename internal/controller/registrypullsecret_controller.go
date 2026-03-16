@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlbuilder "sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -30,6 +31,44 @@ type registryPullSecretReconcileStatus struct {
 	desiredSecretCount int32
 	appliedSecretCount int32
 	deletedSecretCount int32
+}
+
+type registryPullSecretControllerBuilder interface {
+	For(object client.Object, opts ...ctrlbuilder.ForOption) registryPullSecretControllerBuilder
+	Watches(
+		object client.Object,
+		eventHandler handler.TypedEventHandler[client.Object, reconcile.Request],
+		opts ...ctrlbuilder.WatchesOption,
+	) registryPullSecretControllerBuilder
+	Complete(reconciler reconcile.TypedReconciler[reconcile.Request]) error
+}
+
+type registryPullSecretControllerBuilderAdapter struct {
+	builder *ctrlbuilder.TypedBuilder[reconcile.Request]
+}
+
+func (a registryPullSecretControllerBuilderAdapter) For(object client.Object, opts ...ctrlbuilder.ForOption) registryPullSecretControllerBuilder {
+	a.builder = a.builder.For(object, opts...)
+	return a
+}
+
+func (a registryPullSecretControllerBuilderAdapter) Watches(
+	object client.Object,
+	eventHandler handler.TypedEventHandler[client.Object, reconcile.Request],
+	opts ...ctrlbuilder.WatchesOption,
+) registryPullSecretControllerBuilder {
+	a.builder = a.builder.Watches(object, eventHandler, opts...)
+	return a
+}
+
+func (a registryPullSecretControllerBuilderAdapter) Complete(reconciler reconcile.TypedReconciler[reconcile.Request]) error {
+	return a.builder.Complete(reconciler)
+}
+
+var newRegistryPullSecretControllerBuilder = func(mgr ctrl.Manager) registryPullSecretControllerBuilder {
+	return registryPullSecretControllerBuilderAdapter{
+		builder: ctrl.NewControllerManagedBy(mgr),
+	}
 }
 
 func (r *RegistryPullSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -137,7 +176,7 @@ func (r *RegistryPullSecretReconciler) resolveRegistryCredentials(
 }
 
 func (r *RegistryPullSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	return newRegistryPullSecretControllerBuilder(mgr).
 		For(&pullsecretsv1alpha1.RegistryPullSecret{}).
 		Watches(
 			&corev1.Secret{},

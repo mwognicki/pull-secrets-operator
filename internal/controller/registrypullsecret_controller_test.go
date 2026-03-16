@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -14,8 +15,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlbuilder "sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pullsecretsv1alpha1 "github.com/mwognicki/pull-secrets-operator/api/pullsecrets/v1alpha1"
 	"github.com/mwognicki/pull-secrets-operator/internal/sync"
@@ -35,6 +39,60 @@ func TestRegistryPullSecretReconcileIgnoresMissingResource(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v, want nil", err)
+	}
+}
+
+func TestRegistryPullSecretSetupWithManagerRegistersResources(t *testing.T) {
+	t.Parallel()
+
+	reconciler := &RegistryPullSecretReconciler{}
+	builder := &recordingRegistryPullSecretControllerBuilder{}
+
+	previousFactory := newRegistryPullSecretControllerBuilder
+	newRegistryPullSecretControllerBuilder = func(ctrl.Manager) registryPullSecretControllerBuilder {
+		return builder
+	}
+	t.Cleanup(func() {
+		newRegistryPullSecretControllerBuilder = previousFactory
+	})
+
+	if err := reconciler.SetupWithManager(nil); err != nil {
+		t.Fatalf("SetupWithManager() error = %v", err)
+	}
+
+	if builder.forType != reflect.TypeOf(&pullsecretsv1alpha1.RegistryPullSecret{}) {
+		t.Fatalf("For() type = %v, want %v", builder.forType, reflect.TypeOf(&pullsecretsv1alpha1.RegistryPullSecret{}))
+	}
+	if builder.watchType != reflect.TypeOf(&corev1.Secret{}) {
+		t.Fatalf("Watches() type = %v, want %v", builder.watchType, reflect.TypeOf(&corev1.Secret{}))
+	}
+	if !builder.completeCalled {
+		t.Fatal("Complete() was not called")
+	}
+	if builder.completeReconciler != reconciler {
+		t.Fatalf("Complete() reconciler = %T, want %T", builder.completeReconciler, reconciler)
+	}
+}
+
+func TestRegistryPullSecretSetupWithManagerReturnsCompleteError(t *testing.T) {
+	t.Parallel()
+
+	reconciler := &RegistryPullSecretReconciler{}
+	builder := &recordingRegistryPullSecretControllerBuilder{
+		completeErr: fmt.Errorf("complete failed"),
+	}
+
+	previousFactory := newRegistryPullSecretControllerBuilder
+	newRegistryPullSecretControllerBuilder = func(ctrl.Manager) registryPullSecretControllerBuilder {
+		return builder
+	}
+	t.Cleanup(func() {
+		newRegistryPullSecretControllerBuilder = previousFactory
+	})
+
+	err := reconciler.SetupWithManager(nil)
+	if err == nil || !strings.Contains(err.Error(), "complete failed") {
+		t.Fatalf("SetupWithManager() error = %v, want complete error", err)
 	}
 }
 
@@ -1059,4 +1117,32 @@ func (w testStatusWriter) Patch(ctx context.Context, obj client.Object, patch cl
 		return w.SubResourceWriter.Patch(ctx, obj, patch, opts...)
 	}
 	return nil
+}
+
+type recordingRegistryPullSecretControllerBuilder struct {
+	forType            reflect.Type
+	watchType          reflect.Type
+	completeCalled     bool
+	completeErr        error
+	completeReconciler reconcile.TypedReconciler[reconcile.Request]
+}
+
+func (b *recordingRegistryPullSecretControllerBuilder) For(object client.Object, _ ...ctrlbuilder.ForOption) registryPullSecretControllerBuilder {
+	b.forType = reflect.TypeOf(object)
+	return b
+}
+
+func (b *recordingRegistryPullSecretControllerBuilder) Watches(
+	object client.Object,
+	_ handler.TypedEventHandler[client.Object, reconcile.Request],
+	_ ...ctrlbuilder.WatchesOption,
+) registryPullSecretControllerBuilder {
+	b.watchType = reflect.TypeOf(object)
+	return b
+}
+
+func (b *recordingRegistryPullSecretControllerBuilder) Complete(reconciler reconcile.TypedReconciler[reconcile.Request]) error {
+	b.completeCalled = true
+	b.completeReconciler = reconciler
+	return b.completeErr
 }
