@@ -25,12 +25,12 @@ It covers:
 - wildcard namespace rejection
 - invalid explicit target secret name rejection
 - collision rejection for a foreign unmanaged target `Secret`
+- behavior when managed replica `Secret` objects are manually modified
+- behavior when managed replica `Secret` objects are manually deleted
 
 It does not yet cover:
 - multiple registry providers in one run
 - mutation or deletion scenarios after initial sync
-- manual modification of already managed replica `Secret` objects
-- manual deletion of already managed replica `Secret` objects
 - invalid Kubernetes namespace-name rejection
 - `PullSecretPolicy` validity edge cases
 - automatic pull-request execution from GitHub Actions

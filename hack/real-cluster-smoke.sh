@@ -28,6 +28,7 @@ INLINE_NAMESPACE="${TEST_PREFIX}-inline"
 UPDATE_OLD_NAMESPACE="${TEST_PREFIX}-update-old"
 UPDATE_NEW_NAMESPACE="${TEST_PREFIX}-update-new"
 COLLISION_NAMESPACE="${TEST_PREFIX}-collision"
+DRIFT_NAMESPACE="${TEST_PREFIX}-drift"
 
 EXPECTED_DEFAULT_SECRET_NAME=""
 TEMP_DIR=""
@@ -75,7 +76,8 @@ namespace_allowed_by_policy() {
     "${INLINE_NAMESPACE}" | \
     "${UPDATE_OLD_NAMESPACE}" | \
     "${UPDATE_NEW_NAMESPACE}" | \
-    "${COLLISION_NAMESPACE}")
+    "${COLLISION_NAMESPACE}" | \
+    "${DRIFT_NAMESPACE}")
       return 0
       ;;
   esac
@@ -104,7 +106,8 @@ cleanup_test_resources() {
     "${INLINE_NAMESPACE}" \
     "${UPDATE_OLD_NAMESPACE}" \
     "${UPDATE_NEW_NAMESPACE}" \
-    "${COLLISION_NAMESPACE}" >/dev/null 2>&1
+    "${COLLISION_NAMESPACE}" \
+    "${DRIFT_NAMESPACE}" >/dev/null 2>&1
 }
 
 cleanup_operator_install() {
@@ -296,6 +299,7 @@ create_test_namespaces() {
   kubectl create namespace "${UPDATE_OLD_NAMESPACE}"
   kubectl create namespace "${UPDATE_NEW_NAMESPACE}"
   kubectl create namespace "${COLLISION_NAMESPACE}"
+  kubectl create namespace "${DRIFT_NAMESPACE}"
 }
 
 write_manifests() {
@@ -385,6 +389,7 @@ spec:
       - ${UPDATE_NEW_NAMESPACE}
       - ${INVALID_NAMESPACE}
       - ${COLLISION_NAMESPACE}
+      - ${DRIFT_NAMESPACE}
 EOF
 
   cat > "${TEMP_DIR}/inline-rps.yaml" <<EOF
@@ -530,6 +535,21 @@ spec:
     policy: Inclusive
     namespaces:
       - ${COLLISION_NAMESPACE}
+EOF
+
+  cat > "${TEMP_DIR}/drift-rps.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-drift
+spec:
+  credentialsSecretRef:
+    name: ${TEST_PREFIX}-credentials
+    namespace: ${OPERATOR_NAMESPACE}
+  namespaces:
+    policy: Inclusive
+    namespaces:
+      - ${DRIFT_NAMESPACE}
 EOF
 }
 
@@ -678,6 +698,40 @@ run_collision_validation_scenario() {
   log_test_pass "Foreign secret collision validation assertions completed successfully"
 }
 
+run_modified_replica_secret_scenario() {
+  log_test_start "Replica drift on modification: manually changing a managed replica Secret must not trigger immediate re-synchronization"
+  kubectl apply -f "${TEMP_DIR}/drift-rps.yaml"
+
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=True \
+    "registrypullsecret/${TEST_PREFIX}-drift" \
+    --timeout="${WAIT_TIMEOUT}"
+
+  kubectl -n "${DRIFT_NAMESPACE}" patch secret "${EXPECTED_DEFAULT_SECRET_NAME}" \
+    --type merge \
+    -p '{"metadata":{"annotations":{"smoke.ognicki.ooo/drift":"modified"}}}'
+
+  sleep 5
+
+  local annotation_value
+  annotation_value="$(kubectl -n "${DRIFT_NAMESPACE}" get secret "${EXPECTED_DEFAULT_SECRET_NAME}" -o "jsonpath={.metadata.annotations.smoke\\.ognicki\\.ooo/drift}")"
+  if [[ "${annotation_value}" != "modified" ]]; then
+    echo "managed replica secret modification was overwritten unexpectedly" >&2
+    exit 1
+  fi
+
+  log_test_pass "Replica modification drift assertions completed successfully"
+}
+
+run_deleted_replica_secret_scenario() {
+  log_test_start "Replica drift on deletion: manually deleting a managed replica Secret must not trigger immediate recreation"
+  kubectl -n "${DRIFT_NAMESPACE}" delete secret "${EXPECTED_DEFAULT_SECRET_NAME}"
+
+  sleep 5
+
+  assert_secret_missing "${DRIFT_NAMESPACE}" "${EXPECTED_DEFAULT_SECRET_NAME}"
+  log_test_pass "Replica deletion drift assertions completed successfully"
+}
+
 main() {
   require_command kubectl
   require_command mktemp
@@ -709,7 +763,9 @@ main() {
     scenario_is_cached "duplicate-overrides" &&
     scenario_is_cached "wildcard" &&
     scenario_is_cached "short-secret-name" &&
-    scenario_is_cached "collision"; then
+    scenario_is_cached "collision" &&
+    scenario_is_cached "modified-replica-secret" &&
+    scenario_is_cached "deleted-replica-secret"; then
     log_test_cached "Happy-path replication scenario"
     log_test_cached "Cluster-excluded namespace validation scenario"
     log_test_cached "Exclusive policy scenario"
@@ -721,6 +777,8 @@ main() {
     log_test_cached "Wildcard namespace validation scenario"
     log_test_cached "Short secret-name validation scenario"
     log_test_cached "Foreign secret collision validation scenario"
+    log_test_cached "Replica modification drift scenario"
+    log_test_cached "Replica deletion drift scenario"
     log_success "All real-cluster smoke scenarios already have cached passing results for the current input hash"
     exit 0
   fi
@@ -744,6 +802,8 @@ main() {
   run_scenario "wildcard" "Wildcard namespace validation scenario" run_wildcard_validation_scenario
   run_scenario "short-secret-name" "Short secret-name validation scenario" run_short_secret_name_validation_scenario
   run_scenario "collision" "Foreign secret collision validation scenario" run_collision_validation_scenario
+  run_scenario "modified-replica-secret" "Replica modification drift scenario" run_modified_replica_secret_scenario
+  run_scenario "deleted-replica-secret" "Replica deletion drift scenario" run_deleted_replica_secret_scenario
 
   log_success "Real-cluster smoke test passed for ${TEST_PREFIX}"
 }

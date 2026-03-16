@@ -29,8 +29,8 @@ The current smoke flow in [hack/real-cluster-smoke.sh](/Users/marek/Work/Ognicki
 | Prompt reconciliation after updating an existing `RegistryPullSecret` | Yes | Passed | Verified by the current real-cluster smoke flow. |
 | Removal of obsolete managed secrets after changing namespace selection or target secret names | Yes | Passed | Verified by the current real-cluster smoke flow. |
 | Non-destructive behavior when deleting a `RegistryPullSecret` | Yes | Passed | Verified by the current real-cluster smoke flow. |
-| Behavior when managed replica `Secret` objects are manually modified | No | Not run | No real-cluster scenario exists for this behavior yet. |
-| Behavior when managed replica `Secret` objects are manually deleted | No | Not run | No real-cluster scenario exists for this behavior yet. |
+| Behavior when managed replica `Secret` objects are manually modified | Yes | Passed | Verified by the current real-cluster smoke flow. |
+| Behavior when managed replica `Secret` objects are manually deleted | Yes | Passed | Verified by the current real-cluster smoke flow. |
 | `PullSecretPolicy` validity edge cases, including duplicate excluded namespaces | No | Not run | No real-cluster scenario exists for this behavior yet. |
 | `PullSecretPolicy` validity edge cases, including invalid excluded namespace names | No | Not run | No real-cluster scenario exists for this behavior yet. |
 | Multi-registry coverage using additional registry providers | No | Not run | No real-cluster scenario exists for this behavior yet. |
