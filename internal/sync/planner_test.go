@@ -211,10 +211,10 @@ func TestDeriveHostLabel(t *testing.T) {
 		parts []string
 		want  string
 	}{
-		{name: "preferred token wins", parts: []string{"mirror", "ghcr"}, want: "ghcr"},
+		{name: "single significant token kept", parts: []string{"mirror", "ghcr"}, want: "ghcr"},
 		{name: "single filtered token kept", parts: []string{"docker", "private-host"}, want: "private-host"},
 		{name: "all ignored tokens removed", parts: []string{"docker", "registry", "www"}, want: ""},
-		{name: "multiple tokens choose penultimate", parts: []string{"alpha", "beta", "gamma"}, want: "beta"},
+		{name: "multiple tokens choose final significant token", parts: []string{"alpha", "beta", "gamma"}, want: "gamma"},
 	}
 
 	for _, tt := range tests {

@@ -139,19 +139,11 @@ func deriveHostLabel(parts []string) string {
 		filtered = append(filtered, part)
 	}
 
-	for _, part := range filtered {
-		if preferredHostTokens[part] {
-			return part
-		}
-	}
-
 	switch {
 	case len(filtered) == 0:
 		return ""
-	case len(filtered) == 1:
-		return filtered[0]
 	default:
-		return filtered[len(filtered)-2]
+		return filtered[len(filtered)-1]
 	}
 }
 
@@ -186,11 +178,6 @@ var ignoredHostTokens = map[string]bool{
 	"docker":   true,
 	"registry": true,
 	"www":      true,
-}
-
-var preferredHostTokens = map[string]bool{
-	"ghcr":        true,
-	"oraclecloud": true,
 }
 
 var secondaryDomainTokens = map[string]bool{
