@@ -6,10 +6,11 @@ export default defineConfig({
   base: '/pull-secrets-operator',
   integrations: [
     starlight({
-      title: 'pull-secrets-operator',
+      title: 'Pull Secrets Operator',
       description: 'Kubernetes operator for replicating Docker pull secrets across namespaces.',
       social: {
         github: 'https://github.com/mwognicki/pull-secrets-operator',
+        discord: 'https://discord.com/channels/1483122428132589584',
       },
       sidebar: [
         {

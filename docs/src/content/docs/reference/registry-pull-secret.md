@@ -64,7 +64,7 @@ Controls which namespaces receive the replicated secret.
 | `appliedSecretCount` | integer | Number of secrets created or updated in the last reconciliation |
 | `deletedSecretCount` | integer | Number of obsolete managed secrets deleted in the last reconciliation |
 | `lastSyncTime` | timestamp | Time of the last reconciliation attempt |
-| `conditions` | Condition[] | See [Status and conditions](/reference/status-and-conditions/) |
+| `conditions` | Condition[] | See [Status and conditions](../status-and-conditions/) |
 
 ## Validation rules
 
