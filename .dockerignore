@@ -6,6 +6,7 @@ coverage.*
 *.out
 *.test
 .gocache/
+.smoke-cache/
 bin/
 dist/
 .idea/

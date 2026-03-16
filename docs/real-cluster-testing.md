@@ -62,7 +62,39 @@ export PSO_IMAGE='ghcr.io/mwognicki/pull-secrets-operator:v0.1.0-beta.1'
 export PSO_OPERATOR_NAMESPACE='pull-secrets'
 export PSO_WAIT_TIMEOUT='180s'
 export PSO_TEST_ID='manualrun01'
+export PSO_SMOKE_USE_CACHE='true'
+export PSO_SMOKE_FORCE_RERUN='false'
 ```
+
+### Local Passed-Scenario Cache
+
+The script can reuse previously passed scenario results for the same local input hash.
+
+Cache behavior:
+
+- only passed scenarios are cached
+- failed scenarios are never cached
+- a minimal environment health check still runs every time
+- if every scenario already has a cached pass for the current input hash, the script exits early without reinstalling the operator or rerunning cluster assertions
+
+The cache key currently includes:
+
+- the current contents of the relevant API, controller, sync, manifest, and smoke-script files
+- the selected `PSO_IMAGE`
+
+The cache intentionally does not include kubeconfig or other environment-specific secrets.
+
+The local cache directory is:
+
+```text
+.smoke-cache/real-cluster
+```
+
+Useful controls:
+
+- `PSO_SMOKE_USE_CACHE=true` enables pass-cache reuse
+- `PSO_SMOKE_USE_CACHE=false` disables cache usage
+- `PSO_SMOKE_FORCE_RERUN=true` ignores cached passes and reruns every scenario
 
 ## Resource Isolation
 

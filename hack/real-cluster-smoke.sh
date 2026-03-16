@@ -14,6 +14,8 @@ REGISTRY_USERNAME="${PSO_TEST_REGISTRY_USERNAME:-}"
 REGISTRY_PASSWORD="${PSO_TEST_REGISTRY_PASSWORD:-}"
 REGISTRY_EMAIL="${PSO_TEST_REGISTRY_EMAIL:-ops@example.com}"
 WAIT_TIMEOUT="${PSO_WAIT_TIMEOUT:-180s}"
+USE_CACHE="${PSO_SMOKE_USE_CACHE:-true}"
+FORCE_RERUN="${PSO_SMOKE_FORCE_RERUN:-false}"
 
 TEST_PREFIX="psop-e2e-${TEST_ID}"
 INCLUDED_NAMESPACE="${TEST_PREFIX}-include"
@@ -28,7 +30,9 @@ UPDATE_NEW_NAMESPACE="${TEST_PREFIX}-update-new"
 COLLISION_NAMESPACE="${TEST_PREFIX}-collision"
 
 EXPECTED_DEFAULT_SECRET_NAME=""
-TEMP_DIR="$(mktemp -d)"
+TEMP_DIR=""
+CACHE_DIR="${ROOT_DIR}/.smoke-cache/real-cluster"
+CACHE_INPUT_HASH=""
 
 COLOR_BOLD='\033[1m'
 COLOR_BLUE='\033[34m'
@@ -54,6 +58,10 @@ log_test_start() {
 
 log_test_pass() {
   printf '%b\n' "${COLOR_BOLD}${COLOR_GREEN}Test/assertion passed:${COLOR_RESET} $*"
+}
+
+log_test_cached() {
+  printf '%b\n' "${COLOR_BOLD}${COLOR_YELLOW}[CACHED]${COLOR_RESET} $* OK"
 }
 
 namespace_allowed_by_policy() {
@@ -113,7 +121,9 @@ cleanup() {
   log_info "Starting smoke-test cleanup"
   cleanup_test_resources
   cleanup_operator_install
-  rm -rf "${TEMP_DIR}"
+  if [[ -n "${TEMP_DIR}" ]]; then
+    rm -rf "${TEMP_DIR}"
+  fi
   log_success "Smoke-test cleanup completed"
 }
 
@@ -129,6 +139,64 @@ require_env() {
     echo "missing required environment variable: $1" >&2
     exit 1
   fi
+}
+
+compute_cache_input_hash() {
+  local combined_hashes=""
+  while IFS= read -r file; do
+    combined_hashes="${combined_hashes}$(LC_ALL=C shasum -a 256 "${file}")"$'\n'
+  done < <(
+    find \
+      "${ROOT_DIR}/api/pullsecrets/v1alpha1" \
+      "${ROOT_DIR}/cmd/manager" \
+      "${ROOT_DIR}/config/crd" \
+      "${ROOT_DIR}/config/manager" \
+      "${ROOT_DIR}/config/rbac" \
+      "${ROOT_DIR}/hack" \
+      "${ROOT_DIR}/internal/controller" \
+      "${ROOT_DIR}/internal/sync" \
+      "${ROOT_DIR}/pkg/metadata" \
+      -type f | sort
+  )
+
+  combined_hashes="${combined_hashes}image ${OPERATOR_IMAGE}"$'\n'
+  LC_ALL=C printf '%s' "${combined_hashes}" | LC_ALL=C shasum -a 256 | awk '{print $1}'
+}
+
+scenario_cache_file() {
+  local scenario_key="$1"
+  printf '%s/%s-%s.pass\n' "${CACHE_DIR}" "${scenario_key}" "${CACHE_INPUT_HASH}"
+}
+
+scenario_is_cached() {
+  local scenario_key="$1"
+
+  if [[ "${USE_CACHE}" != "true" || "${FORCE_RERUN}" == "true" ]]; then
+    return 1
+  fi
+
+  [[ -f "$(scenario_cache_file "${scenario_key}")" ]]
+}
+
+record_scenario_pass() {
+  local scenario_key="$1"
+
+  mkdir -p "${CACHE_DIR}"
+  : > "$(scenario_cache_file "${scenario_key}")"
+}
+
+run_scenario() {
+  local scenario_key="$1"
+  local scenario_summary="$2"
+  local scenario_function="$3"
+
+  if scenario_is_cached "${scenario_key}"; then
+    log_test_cached "${scenario_summary} (reused cached passing result)"
+    return 0
+  fi
+
+  "${scenario_function}"
+  record_scenario_pass "${scenario_key}"
 }
 
 assert_secret_exists() {
@@ -613,38 +681,69 @@ run_collision_validation_scenario() {
 main() {
   require_command kubectl
   require_command mktemp
+  require_command shasum
   require_env PSO_TEST_REGISTRY_SERVER "${REGISTRY_SERVER}"
   require_env PSO_TEST_REGISTRY_USERNAME "${REGISTRY_USERNAME}"
   require_env PSO_TEST_REGISTRY_PASSWORD "${REGISTRY_PASSWORD}"
 
-  trap cleanup EXIT
-
   EXPECTED_DEFAULT_SECRET_NAME="$(derive_secret_name "${REGISTRY_SERVER}")"
+  CACHE_INPUT_HASH="$(compute_cache_input_hash)"
   log_info "Loaded smoke-test configuration for registry ${REGISTRY_SERVER}"
   log_info "Expected default managed Secret name: ${EXPECTED_DEFAULT_SECRET_NAME}"
   log_info "Test resource prefix: ${TEST_PREFIX}"
+  log_info "Smoke cache enabled: ${USE_CACHE}"
 
   kubectl version --client >/dev/null
   log_chore "Checking Kubernetes API connectivity with kubectl cluster-info"
   kubectl cluster-info >/dev/null
+  log_success "Kubernetes API connectivity check: accessible"
   kubectl auth can-i get namespaces --all-namespaces >/dev/null
+
+  if scenario_is_cached "valid" &&
+    scenario_is_cached "invalid" &&
+    scenario_is_cached "exclusive" &&
+    scenario_is_cached "inline" &&
+    scenario_is_cached "update" &&
+    scenario_is_cached "non-destructive-delete" &&
+    scenario_is_cached "duplicate-namespaces" &&
+    scenario_is_cached "duplicate-overrides" &&
+    scenario_is_cached "wildcard" &&
+    scenario_is_cached "short-secret-name" &&
+    scenario_is_cached "collision"; then
+    log_test_cached "Happy-path replication scenario"
+    log_test_cached "Cluster-excluded namespace validation scenario"
+    log_test_cached "Exclusive policy scenario"
+    log_test_cached "Inline credentials scenario"
+    log_test_cached "Update and cleanup scenario"
+    log_test_cached "Non-destructive source deletion scenario"
+    log_test_cached "Duplicate namespace validation scenario"
+    log_test_cached "Duplicate override validation scenario"
+    log_test_cached "Wildcard namespace validation scenario"
+    log_test_cached "Short secret-name validation scenario"
+    log_test_cached "Foreign secret collision validation scenario"
+    log_success "All real-cluster smoke scenarios already have cached passing results for the current input hash"
+    exit 0
+  fi
+
+  TEMP_DIR="$(mktemp -d)"
+  trap cleanup EXIT
   log_chore "Performing pre-run reset to avoid interference from previous smoke runs"
   cleanup_operator_install
 
   install_operator
   create_test_namespaces
   write_manifests
-  run_valid_scenario
-  run_invalid_scenario
-  run_exclusive_scenario
-  run_inline_credentials_scenario
-  run_update_and_cleanup_scenario
-  run_non_destructive_delete_scenario
-  run_duplicate_namespaces_validation_scenario
-  run_duplicate_overrides_validation_scenario
-  run_wildcard_validation_scenario
-  run_short_secret_name_validation_scenario
-  run_collision_validation_scenario
+  run_scenario "valid" "Happy-path replication scenario" run_valid_scenario
+  run_scenario "invalid" "Cluster-excluded namespace validation scenario" run_invalid_scenario
+  run_scenario "exclusive" "Exclusive policy scenario" run_exclusive_scenario
+  run_scenario "inline" "Inline credentials scenario" run_inline_credentials_scenario
+  run_scenario "update" "Update and cleanup scenario" run_update_and_cleanup_scenario
+  run_scenario "non-destructive-delete" "Non-destructive source deletion scenario" run_non_destructive_delete_scenario
+  run_scenario "duplicate-namespaces" "Duplicate namespace validation scenario" run_duplicate_namespaces_validation_scenario
+  run_scenario "duplicate-overrides" "Duplicate override validation scenario" run_duplicate_overrides_validation_scenario
+  run_scenario "wildcard" "Wildcard namespace validation scenario" run_wildcard_validation_scenario
+  run_scenario "short-secret-name" "Short secret-name validation scenario" run_short_secret_name_validation_scenario
+  run_scenario "collision" "Foreign secret collision validation scenario" run_collision_validation_scenario
 
   log_success "Real-cluster smoke test passed for ${TEST_PREFIX}"
 }
