@@ -142,6 +142,7 @@ It provides:
 - test registry credentials from GitHub Secrets
 - a selectable image tag input, currently defaulting to `v0.1.0-beta.1`
 - an ephemeral Tailscale node for the workflow run through `tailscale/github-action@v4`
+- restore/save transport for `.smoke-cache/real-cluster`, with actual pass reuse still decided by the smoke script's own input-hash logic
 
 It does not yet run automatically for pull requests.
 
