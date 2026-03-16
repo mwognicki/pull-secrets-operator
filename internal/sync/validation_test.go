@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -474,5 +475,61 @@ func TestValidateTargetsRejectsInvalidResultingName(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("validateTargets() error = nil, want invalid resulting name error")
+	}
+}
+
+func TestIsValidationError(t *testing.T) {
+	t.Parallel()
+
+	if IsValidationError(nil) {
+		t.Fatal("IsValidationError(nil) = true, want false")
+	}
+
+	err := ValidateRegistryPullSecret(
+		pullsecretsv1alpha1.RegistryPullSecret{
+			Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
+				Namespaces: pullsecretsv1alpha1.NamespaceSelection{
+					Policy:     pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive,
+					Namespaces: []string{"team-a", "team-a"},
+				},
+			},
+		},
+		pullsecretsv1alpha1.RegistryCredentials{Server: "ghcr.io"},
+		pullsecretsv1alpha1.PullSecretPolicy{},
+		nil,
+	)
+	if !IsValidationError(err) {
+		t.Fatalf("IsValidationError(%v) = false, want true", err)
+	}
+	if IsValidationError(errors.New("plain error")) {
+		t.Fatal("IsValidationError(non-validation error) = true, want false")
+	}
+}
+
+func TestValidatePullSecretPolicy(t *testing.T) {
+	t.Parallel()
+
+	if err := ValidatePullSecretPolicy(pullsecretsv1alpha1.PullSecretPolicy{
+		Spec: pullsecretsv1alpha1.PullSecretPolicySpec{
+			ExcludedNamespaces: []string{"team-a", "team-b"},
+		},
+	}); err != nil {
+		t.Fatalf("ValidatePullSecretPolicy() error = %v", err)
+	}
+
+	if err := ValidatePullSecretPolicy(pullsecretsv1alpha1.PullSecretPolicy{
+		Spec: pullsecretsv1alpha1.PullSecretPolicySpec{
+			ExcludedNamespaces: []string{"team-a", "team-a"},
+		},
+	}); err == nil || !IsValidationError(err) {
+		t.Fatalf("ValidatePullSecretPolicy() duplicate error = %v, want validation error", err)
+	}
+
+	if err := ValidatePullSecretPolicy(pullsecretsv1alpha1.PullSecretPolicy{
+		Spec: pullsecretsv1alpha1.PullSecretPolicySpec{
+			ExcludedNamespaces: []string{"Bad Namespace"},
+		},
+	}); err == nil || !IsValidationError(err) {
+		t.Fatalf("ValidatePullSecretPolicy() invalid namespace error = %v, want validation error", err)
 	}
 }

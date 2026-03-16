@@ -16,5 +16,5 @@ Behavior notes:
 - Drift in managed replica Secrets is intentionally not watched directly; those Secrets are resynchronized only on a later `RegistryPullSecret` reconcile, including after operator restart.
 - The controller also performs defensive validation for invalid-but-admitted objects, including namespace duplication, invalid namespace names, wildcard namespace patterns, excluded explicit namespaces, invalid target Secret names, and collisions with foreign Secrets.
 - `PullSecretPolicy` is still not treated as a standalone retroactive cleanup trigger by itself.
-- `RegistryPullSecret.status` is updated on successful and failed reconciliations.
-- `PullSecretPolicy.status` is updated by a dedicated reconciler and reflects whether a given object is the active singleton policy.
+- `RegistryPullSecret.status` is updated on successful and failed reconciliations, with validation failures surfaced through concise condition reasons and messages.
+- `PullSecretPolicy.status` is updated by a dedicated reconciler and reflects whether a given object is the active singleton policy and valid from the operator perspective.

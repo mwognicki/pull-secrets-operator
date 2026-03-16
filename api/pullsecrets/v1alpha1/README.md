@@ -19,5 +19,5 @@ Current API notes:
 - Wildcard namespace patterns are intentionally unsupported for now.
 - Resulting pull secret names must be valid Kubernetes Secret names and contain at least 3 alphanumeric characters.
 - An explicitly selected namespace may not also be excluded by `PullSecretPolicy`.
-- `RegistryPullSecret.status` reports observed generation, secret counts, last sync time, and a `Ready` condition.
-- `PullSecretPolicy.status` reports observed generation, excluded namespace count, singleton activity, last sync time, and a `Ready` condition.
+- `RegistryPullSecret.status` reports observed generation, secret counts, last sync time, and concise conditions, including validation failures.
+- `PullSecretPolicy.status` reports observed generation, excluded namespace count, singleton activity, operator-validity, last sync time, and concise `Ready`/`Valid` conditions.

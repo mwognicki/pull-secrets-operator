@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -12,6 +13,35 @@ import (
 	"github.com/mwognicki/pull-secrets-operator/pkg/metadata"
 )
 
+type validationError struct {
+	err error
+}
+
+func (e validationError) Error() string {
+	return e.err.Error()
+}
+
+func (e validationError) Unwrap() error {
+	return e.err
+}
+
+func asValidationError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var validationErr validationError
+	if errors.As(err, &validationErr) {
+		return err
+	}
+	return validationError{err: err}
+}
+
+// IsValidationError reports whether an error represents semantic validation failure.
+func IsValidationError(err error) bool {
+	var validationErr validationError
+	return errors.As(err, &validationErr)
+}
+
 // ValidateRegistryPullSecret enforces semantic validation rules that go beyond
 // basic CRD admission checks.
 func ValidateRegistryPullSecret(
@@ -21,22 +51,38 @@ func ValidateRegistryPullSecret(
 	existingSecrets map[string]*corev1.Secret,
 ) error {
 	if err := validateNamespaceSelection(registryPullSecret.Spec.Namespaces); err != nil {
-		return err
+		return asValidationError(err)
 	}
 	if err := validateGloballyExcludedSelection(registryPullSecret.Spec.Namespaces, policy.Spec.ExcludedNamespaces); err != nil {
-		return err
+		return asValidationError(err)
 	}
 	if err := validateDefaultTargetSecretName(registryPullSecret, credentials); err != nil {
-		return err
+		return asValidationError(err)
 	}
 
 	targets, err := EffectiveTargets(registryPullSecret, credentials, policy, policyAwareNamespaceInventory(registryPullSecret, policy))
 	if err != nil {
-		return err
+		return asValidationError(err)
 	}
 
 	if err := validateTargets(registryPullSecret, targets, existingSecrets); err != nil {
-		return err
+		return asValidationError(err)
+	}
+
+	return nil
+}
+
+// ValidatePullSecretPolicy enforces semantic validation rules for the cluster-wide policy resource.
+func ValidatePullSecretPolicy(policy pullsecretsv1alpha1.PullSecretPolicy) error {
+	seen := make(map[string]struct{}, len(policy.Spec.ExcludedNamespaces))
+	for _, namespace := range policy.Spec.ExcludedNamespaces {
+		if err := validateNamespaceName(namespace); err != nil {
+			return asValidationError(fmt.Errorf("excluded namespace %q is invalid: %w", namespace, err))
+		}
+		if _, ok := seen[namespace]; ok {
+			return asValidationError(fmt.Errorf("excluded namespace %q is duplicated", namespace))
+		}
+		seen[namespace] = struct{}{}
 	}
 
 	return nil
