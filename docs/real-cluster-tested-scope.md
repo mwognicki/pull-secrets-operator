@@ -18,12 +18,12 @@ The current smoke flow in [hack/real-cluster-smoke.sh](/Users/marek/Work/Ognicki
 | Status behavior for that validation failure, including `Ready=False` with reason `ValidationFailed` | Yes | Passed | Verified by the current real-cluster smoke flow. |
 | End-to-end smoke-test cleanup, including operator installation teardown and removal of throwaway namespaces and temporary resources | Yes | Passed | Verified by the current real-cluster smoke flow. |
 | `Exclusive` namespace policy behavior as a primary scenario | Yes | Passed | Verified by the current real-cluster smoke flow. |
-| Duplicate namespace validation in explicit namespace lists | No | Not run | No real-cluster scenario exists for this behavior yet. |
-| Duplicate namespace validation in namespace overrides | No | Not run | No real-cluster scenario exists for this behavior yet. |
-| Wildcard namespace rejection | No | Not run | No real-cluster scenario exists for this behavior yet. |
+| Duplicate namespace validation in explicit namespace lists | Yes | Passed | Verified by the current real-cluster smoke flow. |
+| Duplicate namespace validation in namespace overrides | Yes | Passed | Verified by the current real-cluster smoke flow. |
+| Wildcard namespace rejection | Yes | Passed | Verified by the current real-cluster smoke flow. |
 | Invalid Kubernetes namespace-name rejection | No | Not run | No real-cluster scenario exists for this behavior yet. |
-| Invalid or too-short resulting pull secret name rejection | No | Not run | No real-cluster scenario exists for this behavior yet. |
-| Collisions with existing foreign or unmanaged `Secret` resources | No | Not run | No real-cluster scenario exists for this behavior yet. |
+| Invalid or too-short resulting pull secret name rejection | Yes | Passed | Verified by the current real-cluster smoke flow. |
+| Collisions with existing foreign or unmanaged `Secret` resources | Yes | Passed | Verified by the current real-cluster smoke flow. |
 | Inline credential mode | Yes | Passed | Verified by the current real-cluster smoke flow. |
 | Additional secret-backed credential variations beyond the current happy path | No | Not run | No real-cluster scenario exists for this behavior yet. |
 | Prompt reconciliation after updating an existing `RegistryPullSecret` | Yes | Passed | Verified by the current real-cluster smoke flow. |

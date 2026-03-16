@@ -20,11 +20,19 @@ It covers:
 - prompt reconciliation after updating an existing `RegistryPullSecret`
 - removal of obsolete managed secrets after changing target namespaces or secret names
 - non-destructive behavior when deleting a `RegistryPullSecret`
+- duplicate namespace validation in explicit namespace lists
+- duplicate namespace validation in namespace overrides
+- wildcard namespace rejection
+- invalid explicit target secret name rejection
+- collision rejection for a foreign unmanaged target `Secret`
 
 It does not yet cover:
 - multiple registry providers in one run
 - mutation or deletion scenarios after initial sync
 - manual modification of already managed replica `Secret` objects
+- manual deletion of already managed replica `Secret` objects
+- invalid Kubernetes namespace-name rejection
+- `PullSecretPolicy` validity edge cases
 - automatic pull-request execution from GitHub Actions
 - PR-scoped image build and test wiring inside CI
 

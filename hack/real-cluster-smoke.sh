@@ -25,6 +25,7 @@ EXCLUSIVE_BLOCKED_NAMESPACE="${TEST_PREFIX}-exclusive-block"
 INLINE_NAMESPACE="${TEST_PREFIX}-inline"
 UPDATE_OLD_NAMESPACE="${TEST_PREFIX}-update-old"
 UPDATE_NEW_NAMESPACE="${TEST_PREFIX}-update-new"
+COLLISION_NAMESPACE="${TEST_PREFIX}-collision"
 
 EXPECTED_DEFAULT_SECRET_NAME=""
 TEMP_DIR="$(mktemp -d)"
@@ -65,7 +66,8 @@ namespace_allowed_by_policy() {
     "${EXCLUSIVE_BLOCKED_NAMESPACE}" | \
     "${INLINE_NAMESPACE}" | \
     "${UPDATE_OLD_NAMESPACE}" | \
-    "${UPDATE_NEW_NAMESPACE}")
+    "${UPDATE_NEW_NAMESPACE}" | \
+    "${COLLISION_NAMESPACE}")
       return 0
       ;;
   esac
@@ -93,7 +95,8 @@ cleanup_test_resources() {
     "${EXCLUSIVE_BLOCKED_NAMESPACE}" \
     "${INLINE_NAMESPACE}" \
     "${UPDATE_OLD_NAMESPACE}" \
-    "${UPDATE_NEW_NAMESPACE}" >/dev/null 2>&1
+    "${UPDATE_NEW_NAMESPACE}" \
+    "${COLLISION_NAMESPACE}" >/dev/null 2>&1
 }
 
 cleanup_operator_install() {
@@ -224,6 +227,7 @@ create_test_namespaces() {
   kubectl create namespace "${INLINE_NAMESPACE}"
   kubectl create namespace "${UPDATE_OLD_NAMESPACE}"
   kubectl create namespace "${UPDATE_NEW_NAMESPACE}"
+  kubectl create namespace "${COLLISION_NAMESPACE}"
 }
 
 write_manifests() {
@@ -312,6 +316,7 @@ spec:
       - ${UPDATE_OLD_NAMESPACE}
       - ${UPDATE_NEW_NAMESPACE}
       - ${INVALID_NAMESPACE}
+      - ${COLLISION_NAMESPACE}
 EOF
 
   cat > "${TEMP_DIR}/inline-rps.yaml" <<EOF
@@ -362,6 +367,101 @@ spec:
     namespaceOverrides:
       - namespace: ${UPDATE_NEW_NAMESPACE}
         secretName: ${TEST_PREFIX}-updated-secret
+EOF
+
+  cat > "${TEMP_DIR}/duplicate-namespaces-rps.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-duplicate-namespaces
+spec:
+  credentialsSecretRef:
+    name: ${TEST_PREFIX}-credentials
+    namespace: ${OPERATOR_NAMESPACE}
+  namespaces:
+    policy: Inclusive
+    namespaces:
+      - ${INCLUDED_NAMESPACE}
+      - ${INCLUDED_NAMESPACE}
+EOF
+
+  cat > "${TEMP_DIR}/duplicate-overrides-rps.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-duplicate-overrides
+spec:
+  credentialsSecretRef:
+    name: ${TEST_PREFIX}-credentials
+    namespace: ${OPERATOR_NAMESPACE}
+  namespaces:
+    policy: Inclusive
+    namespaces:
+      - ${OVERRIDE_NAMESPACE}
+    namespaceOverrides:
+      - namespace: ${OVERRIDE_NAMESPACE}
+        secretName: ${TEST_PREFIX}-override-one
+      - namespace: ${OVERRIDE_NAMESPACE}
+        secretName: ${TEST_PREFIX}-override-two
+EOF
+
+  cat > "${TEMP_DIR}/wildcard-rps.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-wildcard
+spec:
+  credentialsSecretRef:
+    name: ${TEST_PREFIX}-credentials
+    namespace: ${OPERATOR_NAMESPACE}
+  namespaces:
+    policy: Inclusive
+    namespaces:
+      - ${TEST_PREFIX}-*
+EOF
+
+  cat > "${TEMP_DIR}/short-secret-name-rps.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-short-secret-name
+spec:
+  credentialsSecretRef:
+    name: ${TEST_PREFIX}-credentials
+    namespace: ${OPERATOR_NAMESPACE}
+  namespaces:
+    policy: Inclusive
+    namespaces:
+      - ${INLINE_NAMESPACE}
+    namespaceOverrides:
+      - namespace: ${INLINE_NAMESPACE}
+        secretName: ab
+EOF
+
+  cat > "${TEMP_DIR}/collision-secret.yaml" <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${EXPECTED_DEFAULT_SECRET_NAME}
+  namespace: ${COLLISION_NAMESPACE}
+type: Opaque
+stringData:
+  note: foreign-secret
+EOF
+
+  cat > "${TEMP_DIR}/collision-rps.yaml" <<EOF
+apiVersion: pullsecrets.ognicki.ooo/v1alpha1
+kind: RegistryPullSecret
+metadata:
+  name: ${TEST_PREFIX}-collision
+spec:
+  credentialsSecretRef:
+    name: ${TEST_PREFIX}-credentials
+    namespace: ${OPERATOR_NAMESPACE}
+  namespaces:
+    policy: Inclusive
+    namespaces:
+      - ${COLLISION_NAMESPACE}
 EOF
 }
 
@@ -449,6 +549,67 @@ run_non_destructive_delete_scenario() {
   log_test_pass "Non-destructive source deletion assertions completed successfully"
 }
 
+run_duplicate_namespaces_validation_scenario() {
+  log_test_start "Validation failure: duplicated namespace entries in the explicit namespace list must be rejected"
+  kubectl apply -f "${TEMP_DIR}/duplicate-namespaces-rps.yaml"
+
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=False \
+    "registrypullsecret/${TEST_PREFIX}-duplicate-namespaces" \
+    --timeout="${WAIT_TIMEOUT}"
+
+  assert_condition_reason "registrypullsecret" "${TEST_PREFIX}-duplicate-namespaces" "Ready" "ValidationFailed"
+  log_test_pass "Duplicate namespace validation assertions completed successfully"
+}
+
+run_duplicate_overrides_validation_scenario() {
+  log_test_start "Validation failure: duplicated namespace override entries must be rejected"
+  kubectl apply -f "${TEMP_DIR}/duplicate-overrides-rps.yaml"
+
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=False \
+    "registrypullsecret/${TEST_PREFIX}-duplicate-overrides" \
+    --timeout="${WAIT_TIMEOUT}"
+
+  assert_condition_reason "registrypullsecret" "${TEST_PREFIX}-duplicate-overrides" "Ready" "ValidationFailed"
+  log_test_pass "Duplicate override validation assertions completed successfully"
+}
+
+run_wildcard_validation_scenario() {
+  log_test_start "Validation failure: wildcard namespace patterns must be rejected"
+  kubectl apply -f "${TEMP_DIR}/wildcard-rps.yaml"
+
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=False \
+    "registrypullsecret/${TEST_PREFIX}-wildcard" \
+    --timeout="${WAIT_TIMEOUT}"
+
+  assert_condition_reason "registrypullsecret" "${TEST_PREFIX}-wildcard" "Ready" "ValidationFailed"
+  log_test_pass "Wildcard namespace validation assertions completed successfully"
+}
+
+run_short_secret_name_validation_scenario() {
+  log_test_start "Validation failure: an explicitly configured target pull-secret name must satisfy the minimum naming rules"
+  kubectl apply -f "${TEMP_DIR}/short-secret-name-rps.yaml"
+
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=False \
+    "registrypullsecret/${TEST_PREFIX}-short-secret-name" \
+    --timeout="${WAIT_TIMEOUT}"
+
+  assert_condition_reason "registrypullsecret" "${TEST_PREFIX}-short-secret-name" "Ready" "ValidationFailed"
+  log_test_pass "Short secret-name validation assertions completed successfully"
+}
+
+run_collision_validation_scenario() {
+  log_test_start "Validation failure: a target secret collision with a foreign unmanaged Secret must be rejected"
+  kubectl create -f "${TEMP_DIR}/collision-secret.yaml"
+  kubectl apply -f "${TEMP_DIR}/collision-rps.yaml"
+
+  kubectl wait --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=False \
+    "registrypullsecret/${TEST_PREFIX}-collision" \
+    --timeout="${WAIT_TIMEOUT}"
+
+  assert_condition_reason "registrypullsecret" "${TEST_PREFIX}-collision" "Ready" "ValidationFailed"
+  log_test_pass "Foreign secret collision validation assertions completed successfully"
+}
+
 main() {
   require_command kubectl
   require_command mktemp
@@ -479,6 +640,11 @@ main() {
   run_inline_credentials_scenario
   run_update_and_cleanup_scenario
   run_non_destructive_delete_scenario
+  run_duplicate_namespaces_validation_scenario
+  run_duplicate_overrides_validation_scenario
+  run_wildcard_validation_scenario
+  run_short_secret_name_validation_scenario
+  run_collision_validation_scenario
 
   log_success "Real-cluster smoke test passed for ${TEST_PREFIX}"
 }
