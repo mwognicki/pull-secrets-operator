@@ -89,6 +89,14 @@ func DefaultTargetSecretName(server string) (string, error) {
 		return "", err
 	}
 
+	if !strings.Contains(host, ".") {
+		candidate := sanitizeDNSLabelPart(host)
+		if candidate == "" {
+			return "", fmt.Errorf("derive secret name from registry server %q: empty candidate", server)
+		}
+		return candidate + defaultDerivedSecretSuffix, nil
+	}
+
 	parts := stripKnownTLDSuffix(strings.Split(host, "."))
 	candidate := deriveHostLabel(parts)
 	if candidate == "" {
@@ -131,19 +139,11 @@ func deriveHostLabel(parts []string) string {
 		filtered = append(filtered, part)
 	}
 
-	for _, part := range filtered {
-		if preferredHostTokens[part] {
-			return part
-		}
-	}
-
 	switch {
 	case len(filtered) == 0:
 		return ""
-	case len(filtered) == 1:
-		return filtered[0]
 	default:
-		return filtered[len(filtered)-2]
+		return filtered[len(filtered)-1]
 	}
 }
 
@@ -157,16 +157,21 @@ func stripKnownTLDSuffix(parts []string) []string {
 		sanitized = append(sanitized, part)
 	}
 
-	for _, suffix := range knownDomainSuffixes {
-		if len(sanitized) < len(suffix) {
-			continue
-		}
-		if slices.Equal(sanitized[len(sanitized)-len(suffix):], suffix) {
-			return sanitized[:len(sanitized)-len(suffix)]
-		}
+	if len(sanitized) == 0 {
+		return sanitized
 	}
 
-	return sanitized
+	trimmed := sanitized[:len(sanitized)-1]
+	if len(trimmed) == 0 {
+		return trimmed
+	}
+
+	last := trimmed[len(trimmed)-1]
+	if secondaryDomainTokens[last] {
+		return trimmed[:len(trimmed)-1]
+	}
+
+	return trimmed
 }
 
 var ignoredHostTokens = map[string]bool{
@@ -175,22 +180,13 @@ var ignoredHostTokens = map[string]bool{
 	"www":      true,
 }
 
-var preferredHostTokens = map[string]bool{
-	"ghcr":        true,
-	"oraclecloud": true,
-}
-
-var knownDomainSuffixes = [][]string{
-	{"co", "uk"},
-	{"com"},
-	{"pl"},
-	{"cloud"},
-	{"org"},
-	{"net"},
-	{"eu"},
-	{"io"},
-	{"dev"},
-	{"space"},
+var secondaryDomainTokens = map[string]bool{
+	"gov": true,
+	"net": true,
+	"com": true,
+	"co":  true,
+	"org": true,
+	"edu": true,
 }
 
 func sanitizeDNSLabelPart(part string) string {

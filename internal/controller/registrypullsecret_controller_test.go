@@ -260,12 +260,13 @@ func TestRegistryPullSecretReconcileRespectsClusterWideExclusions(t *testing.T) 
 						Password: "s3cret",
 					},
 					Namespaces: pullsecretsv1alpha1.NamespaceSelection{
-						Policy:     pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive,
-						Namespaces: []string{"team-a"},
+						Policy:     pullsecretsv1alpha1.NamespaceSelectionPolicyExclusive,
+						Namespaces: []string{"team-b"},
 					},
 				},
 			},
 			&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "team-a"}},
+			&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "team-b"}},
 		).Build(),
 	}
 
@@ -446,6 +447,52 @@ func TestRegistryPullSecretReconcileUpdatesFailureStatus(t *testing.T) {
 	}
 	if len(registryPullSecret.Status.Conditions) != 1 || registryPullSecret.Status.Conditions[0].Status != metav1.ConditionFalse {
 		t.Fatalf("status conditions = %#v, want Ready=False", registryPullSecret.Status.Conditions)
+	}
+}
+
+func TestRegistryPullSecretReconcileRejectsGloballyExcludedExplicitNamespace(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	reconciler := &RegistryPullSecretReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&pullsecretsv1alpha1.RegistryPullSecret{}).WithObjects(
+			&pullsecretsv1alpha1.PullSecretPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: pullsecretsv1alpha1.PullSecretPolicySingletonName},
+				Spec: pullsecretsv1alpha1.PullSecretPolicySpec{
+					ExcludedNamespaces: []string{"team-a"},
+				},
+			},
+			&pullsecretsv1alpha1.RegistryPullSecret{
+				ObjectMeta: metav1.ObjectMeta{Name: "ghcr", Generation: 2},
+				Spec: pullsecretsv1alpha1.RegistryPullSecretSpec{
+					Credentials: &pullsecretsv1alpha1.RegistryCredentials{
+						Server:   "ghcr.io",
+						Username: "octocat",
+						Password: "s3cret",
+					},
+					Namespaces: pullsecretsv1alpha1.NamespaceSelection{
+						Policy:     pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive,
+						Namespaces: []string{"team-a"},
+					},
+				},
+			},
+			&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "team-a"}},
+		).Build(),
+	}
+
+	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "ghcr"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "explicitly selected but excluded") {
+		t.Fatalf("Reconcile() error = %v, want excluded namespace validation error", err)
+	}
+
+	var registryPullSecret pullsecretsv1alpha1.RegistryPullSecret
+	if err := reconciler.Get(context.Background(), types.NamespacedName{Name: "ghcr"}, &registryPullSecret); err != nil {
+		t.Fatalf("get RegistryPullSecret error = %v", err)
+	}
+	if cond := apimeta.FindStatusCondition(registryPullSecret.Status.Conditions, "Ready"); cond == nil || cond.Status != metav1.ConditionFalse {
+		t.Fatalf("Ready condition = %#v, want false", registryPullSecret.Status.Conditions)
 	}
 }
 
