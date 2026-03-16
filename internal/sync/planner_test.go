@@ -119,6 +119,46 @@ func TestDefaultTargetSecretName(t *testing.T) {
 			server: "registry.widgets.co.uk",
 			want:   "widgets-pull-secret",
 		},
+		{
+			name:   "gov se suffix is stripped",
+			server: "registry.govservice.gov.se",
+			want:   "govservice-pull-secret",
+		},
+		{
+			name:   "gov si suffix is stripped",
+			server: "registry.ministry.gov.si",
+			want:   "ministry-pull-secret",
+		},
+		{
+			name:   "org fi suffix is stripped",
+			server: "docker.foundation.org.fi",
+			want:   "foundation-pull-secret",
+		},
+		{
+			name:   "com ge suffix is stripped",
+			server: "registry.example.com.ge",
+			want:   "example-pull-secret",
+		},
+		{
+			name:   "net dk suffix is stripped",
+			server: "registry.company.net.dk",
+			want:   "company-pull-secret",
+		},
+		{
+			name:   "co in suffix is stripped",
+			server: "registry.widgets.co.in",
+			want:   "widgets-pull-secret",
+		},
+		{
+			name:   "localhost stays unchanged apart from suffix",
+			server: "localhost",
+			want:   "localhost-pull-secret",
+		},
+		{
+			name:   "single label host with port stays unchanged apart from suffix",
+			server: "some-other-server:2929",
+			want:   "some-other-server-pull-secret",
+		},
 	}
 
 	for _, tt := range tests {
