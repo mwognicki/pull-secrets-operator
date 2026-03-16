@@ -23,6 +23,7 @@ type PullSecretPolicyStatus struct {
 	ObservedGeneration     int64              `json:"observedGeneration,omitempty"`
 	ExcludedNamespaceCount int32              `json:"excludedNamespaceCount,omitempty"`
 	ActiveSingleton        bool               `json:"activeSingleton,omitempty"`
+	Valid                  bool               `json:"valid,omitempty"`
 	LastSyncTime           *metav1.Time       `json:"lastSyncTime,omitempty"`
 	Conditions             []metav1.Condition `json:"conditions,omitempty"`
 }

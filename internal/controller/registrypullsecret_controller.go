@@ -311,6 +311,9 @@ func (r *RegistryPullSecretReconciler) updateRegistryPullSecretStatus(
 	if reconcileErr != nil {
 		condition.Status = metav1.ConditionFalse
 		condition.Reason = "SyncFailed"
+		if sync.IsValidationError(reconcileErr) {
+			condition.Reason = "ValidationFailed"
+		}
 		condition.Message = reconcileErr.Error()
 	} else {
 		condition.Status = metav1.ConditionTrue

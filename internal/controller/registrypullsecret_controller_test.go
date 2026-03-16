@@ -493,6 +493,8 @@ func TestRegistryPullSecretReconcileRejectsGloballyExcludedExplicitNamespace(t *
 	}
 	if cond := apimeta.FindStatusCondition(registryPullSecret.Status.Conditions, "Ready"); cond == nil || cond.Status != metav1.ConditionFalse {
 		t.Fatalf("Ready condition = %#v, want false", registryPullSecret.Status.Conditions)
+	} else if cond.Reason != "ValidationFailed" {
+		t.Fatalf("Ready condition reason = %q, want ValidationFailed", cond.Reason)
 	}
 }
 

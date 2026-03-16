@@ -51,7 +51,8 @@ See the README files inside those directories for the intended responsibilities.
 - Resulting pull secret names must be Kubernetes-compatible and contain at least 3 alphanumeric characters
 - Explicitly selected namespaces may not conflict with cluster-wide exclusions, and target names may not collide with existing foreign Secrets
 - `RegistryPullSecret.status` reports reconciliation results and secret counts
-- `PullSecretPolicy.status` reports singleton activity and excluded namespace counts
+- invalid reconciliation or policy situations are reflected through concise status conditions and messages
+- `PullSecretPolicy.status` reports singleton activity, operator-validity, and excluded namespace counts
 
 ## Current Manifests
 
