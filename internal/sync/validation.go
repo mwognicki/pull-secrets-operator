@@ -63,20 +63,43 @@ func validateDefaultTargetSecretName(
 }
 
 func validateNamespaceSelection(selection pullsecretsv1alpha1.NamespaceSelection) error {
-	switch selection.Policy {
+	if err := validateNamespaceSelectionPolicy(selection.Policy); err != nil {
+		return err
+	}
+	if err := validateExplicitTargetSecretName(selection.TargetSecretName); err != nil {
+		return err
+	}
+	if err := validateSelectedNamespaces(selection.Namespaces); err != nil {
+		return err
+	}
+	if err := validateNamespaceOverrides(selection.NamespaceOverrides); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateNamespaceSelectionPolicy(policy pullsecretsv1alpha1.NamespaceSelectionPolicy) error {
+	switch policy {
 	case pullsecretsv1alpha1.NamespaceSelectionPolicyInclusive, pullsecretsv1alpha1.NamespaceSelectionPolicyExclusive:
+		return nil
 	default:
-		return fmt.Errorf("namespace selection policy %q is invalid", selection.Policy)
+		return fmt.Errorf("namespace selection policy %q is invalid", policy)
 	}
+}
 
-	if selection.TargetSecretName != "" {
-		if err := validatePullSecretName(selection.TargetSecretName); err != nil {
-			return fmt.Errorf("targetSecretName %q is invalid: %w", selection.TargetSecretName, err)
-		}
+func validateExplicitTargetSecretName(name string) error {
+	if name == "" {
+		return nil
 	}
+	if err := validatePullSecretName(name); err != nil {
+		return fmt.Errorf("targetSecretName %q is invalid: %w", name, err)
+	}
+	return nil
+}
 
-	seenNamespaces := make(map[string]struct{}, len(selection.Namespaces))
-	for _, namespace := range selection.Namespaces {
+func validateSelectedNamespaces(namespaces []string) error {
+	seenNamespaces := make(map[string]struct{}, len(namespaces))
+	for _, namespace := range namespaces {
 		if err := validateNamespaceName(namespace); err != nil {
 			return fmt.Errorf("namespace %q is invalid: %w", namespace, err)
 		}
@@ -85,9 +108,12 @@ func validateNamespaceSelection(selection pullsecretsv1alpha1.NamespaceSelection
 		}
 		seenNamespaces[namespace] = struct{}{}
 	}
+	return nil
+}
 
-	seenOverrideNamespaces := make(map[string]struct{}, len(selection.NamespaceOverrides))
-	for _, override := range selection.NamespaceOverrides {
+func validateNamespaceOverrides(overrides []pullsecretsv1alpha1.NamespaceTargetOverride) error {
+	seenOverrideNamespaces := make(map[string]struct{}, len(overrides))
+	for _, override := range overrides {
 		if err := validateNamespaceName(override.Namespace); err != nil {
 			return fmt.Errorf("namespace override %q is invalid: %w", override.Namespace, err)
 		}
