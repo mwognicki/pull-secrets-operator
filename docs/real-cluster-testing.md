@@ -15,10 +15,24 @@ It covers:
 - per-namespace secret name override behavior
 - cluster-wide namespace exclusion taking precedence
 - validation failure when a `RegistryPullSecret` explicitly targets a cluster-excluded namespace
+- `Exclusive` namespace policy behavior
+- inline credentials mode
+- prompt reconciliation after updating an existing `RegistryPullSecret`
+- removal of obsolete managed secrets after changing target namespaces or secret names
+- non-destructive behavior when deleting a `RegistryPullSecret`
+- duplicate namespace validation in explicit namespace lists
+- duplicate namespace validation in namespace overrides
+- wildcard namespace rejection
+- invalid explicit target secret name rejection
+- collision rejection for a foreign unmanaged target `Secret`
+- behavior when managed replica `Secret` objects are manually modified
+- behavior when managed replica `Secret` objects are manually deleted
 
 It does not yet cover:
 - multiple registry providers in one run
 - mutation or deletion scenarios after initial sync
+- invalid Kubernetes namespace-name rejection
+- `PullSecretPolicy` validity edge cases
 - automatic pull-request execution from GitHub Actions
 - PR-scoped image build and test wiring inside CI
 
@@ -48,7 +62,39 @@ export PSO_IMAGE='ghcr.io/mwognicki/pull-secrets-operator:v0.1.0-beta.1'
 export PSO_OPERATOR_NAMESPACE='pull-secrets'
 export PSO_WAIT_TIMEOUT='180s'
 export PSO_TEST_ID='manualrun01'
+export PSO_SMOKE_USE_CACHE='true'
+export PSO_SMOKE_FORCE_RERUN='false'
 ```
+
+### Local Passed-Scenario Cache
+
+The script can reuse previously passed scenario results for the same local input hash.
+
+Cache behavior:
+
+- only passed scenarios are cached
+- failed scenarios are never cached
+- a minimal environment health check still runs every time
+- if every scenario already has a cached pass for the current input hash, the script exits early without reinstalling the operator or rerunning cluster assertions
+
+The cache key currently includes:
+
+- the current contents of the relevant API, controller, sync, manifest, and smoke-script files
+- the selected `PSO_IMAGE`
+
+The cache intentionally does not include kubeconfig or other environment-specific secrets.
+
+The local cache directory is:
+
+```text
+.smoke-cache/real-cluster
+```
+
+Useful controls:
+
+- `PSO_SMOKE_USE_CACHE=true` enables pass-cache reuse
+- `PSO_SMOKE_USE_CACHE=false` disables cache usage
+- `PSO_SMOKE_FORCE_RERUN=true` ignores cached passes and reruns every scenario
 
 ## Resource Isolation
 
@@ -96,6 +142,7 @@ It provides:
 - test registry credentials from GitHub Secrets
 - a selectable image tag input, currently defaulting to `v0.1.0-beta.1`
 - an ephemeral Tailscale node for the workflow run through `tailscale/github-action@v4`
+- restore/save transport for `.smoke-cache/real-cluster`, with actual pass reuse still decided by the smoke script's own input-hash logic
 
 It does not yet run automatically for pull requests.
 
